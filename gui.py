@@ -135,13 +135,15 @@ def run_gui():
     )
     log_area.pack(fill=tk.BOTH, expand=True)
     
-    # ฟังก์ชันเขียน Log ลงช่อง Text Widget
+    # ฟังก์ชันเขียน Log ลงช่อง Text Widget (Thread-safe ด้วยการใช้ root.after)
     def write_to_log_area(formatted_msg):
         try:
-            log_area.configure(state='normal')
-            log_area.insert(tk.END, formatted_msg + "\n")
-            log_area.see(tk.END)
-            log_area.configure(state='disabled')
+            def update_ui():
+                log_area.configure(state='normal')
+                log_area.insert(tk.END, formatted_msg + "\n")
+                log_area.see(tk.END)
+                log_area.configure(state='disabled')
+            root.after(0, update_ui)
         except Exception:
             pass
 

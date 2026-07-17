@@ -23,6 +23,8 @@ from config import (
     CLICK_JITTER_PIXELS,
     AUTO_REST_INTERVAL_MINUTES,
     AUTO_REST_DURATION_MINUTES,
+    LOGIN_TAE_TIMEOUT_SECONDS,
+    LOGIN_POLL_INTERVAL_SECONDS,
 )
 from adb_client import adb_connect, adb_tap, adb_long_press, get_screen_size, grab_screen
 from template_matcher import find_template
@@ -59,6 +61,11 @@ session_stats = {
 session_run_start_time = None
 next_rest_time = None
 is_resting = False
+
+# สถานะระบบกู้คืนหน้า Login
+# เมื่อเริ่มขั้นตอนนี้ บอทจะไม่ทำงานตาม FLOW หรือกด Interrupt อื่นจนกว่าจะกด login_tae สำเร็จ
+login_recovery_active = False
+login_recovery_started_at = None
 
 # ฟังก์ชัน Callback สำหรับส่ง Log ไปแสดงที่ GUI
 _gui_log_callback = None
@@ -403,6 +410,68 @@ def check_pause_events(screen):
     return None
 
 
+def handle_login_recovery(screen):
+    """
+    จัดการกรณีเกมเด้งกลับไปหน้าล็อกอินตามลำดับที่กำหนด:
+
+    1. เจอ login.png -> กด login.png เพียงครั้งเดียว
+    2. รอและตรวจหา login_tae.png -> เมื่อเจอจึงกด
+    3. รีเซ็ต state กลับไป INITIAL_STATE เหมือนเริ่มเกมรอบใหม่
+
+    คืนค่า True เมื่อระบบ Login กำลังทำงานหรือเพิ่งทำงานเสร็จ
+    เพื่อให้ bot_loop ข้าม Pause Events, Interrupts และ FLOW ในรอบนั้น
+    """
+    global login_recovery_active, login_recovery_started_at
+    global current_state, paused_event_active, state_start_time, last_state_check
+    global adb_fail_count
+
+    # ถ้ายังไม่ได้เริ่มกู้คืน ให้ตรวจหา login.png ก่อน
+    if not login_recovery_active:
+        login_match = find_template(screen, "login.png")
+        if not login_match:
+            return False
+
+        login_recovery_active = True
+        login_recovery_started_at = time.time()
+        log_info("🔐 ตรวจพบหน้าล็อกอิน: หยุด Flow ชั่วคราวและกำลังกด login.png")
+        log_debug(f"[login] เจอ login.png -> กดตำแหน่ง {login_match}")
+        do_click(login_match)
+        return True
+
+    # ระหว่างกู้คืน Login ห้ามปล่อยให้ระบบไปทำงานตาม FLOW เดิม
+    # ใช้ภาพหน้าจอที่ bot_loop จับมาแล้ว เพื่อไม่ต้องเรียก ADB ซ้ำในรอบเดียวกัน
+    login_tae_match = find_template(screen, "login_tae.png")
+    if login_tae_match:
+        log_info("👤 พบปุ่ม login_tae.png: กำลังกดเลือกบัญชี")
+        log_debug(f"[login] เจอ login_tae.png -> กดตำแหน่ง {login_tae_match}")
+        do_click(login_tae_match)
+
+        # รีเซ็ตเฉพาะการทำงานของ Flow ไม่รีเซ็ตสถิติของ Session ปัจจุบัน
+        current_state = INITIAL_STATE
+        paused_event_active = None
+        state_start_time = time.time()
+        last_state_check = INITIAL_STATE
+        adb_fail_count = 0
+        login_recovery_active = False
+        login_recovery_started_at = None
+
+        log_info("✅ ล็อกอินสำเร็จ: รีเซ็ต Flow กลับไปเริ่มเกมใหม่แล้ว")
+        return True
+
+    # ถ้ารอนานเกินกำหนด ให้แจ้งเตือนแต่ยังคงอยู่ใน Login Recovery
+    # เพื่อป้องกันไม่ให้บอทกลับไปกดปุ่มของเกมผิดหน้า
+    elapsed = time.time() - (login_recovery_started_at or time.time())
+    if elapsed >= LOGIN_TAE_TIMEOUT_SECONDS:
+        log_info(
+            f"⚠️ ยังไม่พบ login_tae.png หลังรอ {LOGIN_TAE_TIMEOUT_SECONDS} วินาที "
+            "บอทยังคงหยุดรออยู่"
+        )
+        login_recovery_started_at = time.time()
+
+    time.sleep(LOGIN_POLL_INTERVAL_SECONDS)
+    return True
+
+
 def handle_pause_start(pause_name, screen):
     """
     ทำงานตอนเพิ่งตรวจเจอ pause event ครั้งแรก:
@@ -456,25 +525,32 @@ def click_gemini_position(description, screen):
 
     x, y = pairs[0]  # เอาคู่แรกที่เจอ
 
+    # ดึงขนาดหน้าจอจริงของ LDPlayer เพื่อนำมาสเกลพิกัดอย่างถูกต้อง (คำนวณจากจอฐาน 1280x720)
+    screen_w, screen_h = get_screen_size()
+
     # [Bug fix] เพิ่ม return เมื่อค่าพิกัดอยู่นอกช่วงที่รองรับ
     # เพื่อป้องกัน UnboundLocalError จาก real_x / real_y ที่ไม่ถูก assign
     if x == 1:
-        real_x = 450
+        base_x = 450
     elif x == 2:
-        real_x = 650
+        base_x = 650
     elif x == 3:
-        real_x = 850
+        base_x = 850
     else:
         print(f"[click_gemini] ค่า x={x} ไม่รองรับ (รองรับแค่ 1,2,3)")
         return
 
     if y == 1:
-        real_y = 300
+        base_y = 300
     elif y == 2:
-        real_y = 600
+        base_y = 600
     else:
         print(f"[click_gemini] ค่า y={y} ไม่รองรับ (รองรับแค่ 1,2)")
         return
+
+    # สเกลพิกัดตามขนาดหน้าจอจริงเทียบกับหน้าจอฐาน 1280x720
+    real_x = int((base_x / 1280.0) * screen_w)
+    real_y = int((base_y / 720.0) * screen_h)
 
     do_click((real_x, real_y))
 
@@ -581,7 +657,14 @@ def bot_loop():
                 adb_fail_count = 0
 
             # -------------------------------------------------------------
-            # 1) เช็ค PAUSE_EVENTS ก่อนเป็นอันดับแรกสุด — ถ้าเจอให้หยุดทุกอย่างและรอ
+            # 1) เช็คระบบกู้คืนหน้า Login ก่อนทุกระบบ
+            #    เพื่อไม่ให้ Pause Events / Interrupts / FLOW มากดปุ่มผิดหน้า
+            # -------------------------------------------------------------
+            if handle_login_recovery(screen):
+                continue
+
+            # -------------------------------------------------------------
+            # 2) เช็ค PAUSE_EVENTS — ถ้าเจอให้หยุดทุกอย่างและรอ
             # -------------------------------------------------------------
             if PAUSE_EVENTS:
                 pause_name = check_pause_events(screen)
@@ -608,13 +691,13 @@ def bot_loop():
                     paused_event_active = None
 
             # -------------------------------------------------------------
-            # 2) เช็ค interrupt — ถ้าเจอให้กดแล้ววนรอบใหม่ทันที
+            # 3) เช็ค interrupt — ถ้าเจอให้กดแล้ววนรอบใหม่ทันที
             # -------------------------------------------------------------
             if INTERRUPTS and check_interrupts(screen):
                 continue
 
             # -------------------------------------------------------------
-            # 3) ทำงานตาม FLOW ปกติ
+            # 4) ทำงานตาม FLOW ปกติ
             # -------------------------------------------------------------
             step = FLOW[current_state]
             template_name = step["template"]
@@ -691,11 +774,14 @@ def bot_loop():
 
 def start_bot():
     global running, current_state, state_start_time, last_state_check
+    global login_recovery_active, login_recovery_started_at
     if not running:
         running = True
         current_state = INITIAL_STATE
         state_start_time = time.time()
         last_state_check = INITIAL_STATE
+        login_recovery_active = False
+        login_recovery_started_at = None
         
         # เริ่มนับสถิติ session ใหม่
         session_stats["start_time"] = time.time()
@@ -718,9 +804,11 @@ def start_bot():
 
 
 def stop_bot():
-    global running
+    global running, login_recovery_active, login_recovery_started_at
     if running:
         running = False
+        login_recovery_active = False
+        login_recovery_started_at = None
         log_info("⏸️ สั่งหยุดการทำงานบอทชั่วคราว")
         log_debug(">> หยุดออโต้ (F7)")
         # เซฟประวัติและรายงานสถิติ

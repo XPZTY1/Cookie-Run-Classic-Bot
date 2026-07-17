@@ -27,16 +27,6 @@ INTERRUPTS = {
         "action": "click",
         "cooldown": 1.0,
     },
-    "login":{
-        "template": "login.png",
-        "action": "click",
-        "cooldown": 2.0,
-    },
-    "login_tae":{
-        "template": "login_tae.png",
-        "action": "click",
-        "cooldown": 5.0,
-    },
     "confirm2_green_popup": {
         "template": "confirm2_green.png",
         "action": "click",
