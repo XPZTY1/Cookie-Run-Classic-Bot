@@ -1,0 +1,24 @@
+{
+  "⭐ ฟาร์มกล่องด่าน 6": {
+    "booster": false,
+    "fast_start": true,
+    "use_second": true,
+    "line": true,
+    "swipe_curve": true,
+    "schedule": false,
+    "discord": true,
+    "ocr_score": true,
+    "speed": "50ms (รัวเร็ว)"
+  },
+  "⭐ ฟาร์มเงิน": {
+    "booster": true,
+    "fast_start": false,
+    "use_second": true,
+    "line": true,
+    "swipe_curve": true,
+    "schedule": false,
+    "discord": true,
+    "ocr_score": true,
+    "speed": "50ms (รัวเร็ว)"
+  }
+}

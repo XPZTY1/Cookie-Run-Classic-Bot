@@ -6,6 +6,7 @@ FLOW = {
         "template": "start_button.png",
         "action": "click",
         "delay": 3,
+        "entry_delay": 5,  # รอ 2 วินาทีก่อนเริ่มกดปุ่มเมื่อกลับมาหน้าแรก เพื่อให้เกมโหลด UI เสร็จ
         "next_state": "item_boots",
     },
 
@@ -33,7 +34,6 @@ FLOW = {
     "let_go": {
         "template": "start_button.png",
         "action": "click",
-        "delay": 2,
         "next_state": "over_game",
     },
 
@@ -43,5 +43,7 @@ FLOW = {
         "delay": 15,
         "next_state": "start_game",
         "tap_while_wait": True,
+        # หยุดกดรัวทันทีเมื่อเจอหน้าจบเกม เพื่อป้องกันไม่ให้เผลอกดปุ่ม OK
+        "guard_templates": ["game_over.png"],
     },
 }

@@ -1,5 +1,6 @@
 import requests  # pip install requests  (ยังใช้สำหรับ LINE Messaging API)
 
+import config
 from secrets_loader import LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID
 
 # ---------------------------------------------------------------------------
@@ -12,7 +13,11 @@ def send_line_message(text):
     ส่งข้อความแจ้งเตือนแบบ push message ไปยัง LINE_USER_ID ที่ตั้งไว้
     ใช้ LINE Messaging API: POST https://api.line.me/v2/bot/message/push
     """
+    if not getattr(config, "ENABLE_LINE_NOTIFY", True):
+        return
+
     if not LINE_CHANNEL_ACCESS_TOKEN:
+
         print("[LINE] ยังไม่ได้ตั้งค่า line_channel_access_token ใน secrets.json — ข้ามการแจ้งเตือน")
         return
     if not LINE_USER_ID:

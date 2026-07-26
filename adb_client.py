@@ -10,13 +10,17 @@ from config import ADB_PATH, DEVICE_ID
 # ---------------------------------------------------------------------------
 
 
+import config
+
+
 def adb_run(args, timeout=10):
     """
-    รันคำสั่ง adb กับ device ที่กำหนด
+    รันคำสั่ง adb กับ device ที่กำหนดใน config.DEVICE_ID
     args: list ของ argument ต่อจาก 'adb -s <device>' เช่น ["shell", "input", "tap", "500", "800"]
     คืนค่า CompletedProcess (มี .stdout เป็น bytes)
     """
-    cmd = [ADB_PATH, "-s", DEVICE_ID] + args
+    device_id = getattr(config, "DEVICE_ID", DEVICE_ID)
+    cmd = [ADB_PATH, "-s", device_id] + args
     try:
         result = subprocess.run(
             cmd,
@@ -33,10 +37,24 @@ def adb_run(args, timeout=10):
         return None
 
 
-def adb_connect():
-    """เชื่อมต่อ ADB กับ LDPlayer ก่อนเริ่มทำงาน (เผื่อยังไม่ได้ connect)"""
+def adb_connect(target_device=None):
+    """เชื่อมต่อ ADB กับ Emulator ตาม target_device หรือ config.DEVICE_ID"""
+    global _screen_size_cache
+    _screen_size_cache = None
+
+    if target_device:
+        config.DEVICE_ID = target_device
+
+    device_id = getattr(config, "DEVICE_ID", DEVICE_ID)
+
     try:
         subprocess.run([ADB_PATH, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+    except Exception:
+        pass
+
+    # พยายามเรียก adb connect <device_id> ก่อน
+    try:
+        subprocess.run([ADB_PATH, "connect", device_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
     except Exception:
         pass
 
@@ -45,13 +63,11 @@ def adb_connect():
     print("[ADB] อุปกรณ์ที่เจอ:")
     print(output)
 
-    if DEVICE_ID not in output:
-        print(f"!! ไม่พบ device '{DEVICE_ID}' ใน `adb devices`")
-        print("!! ตรวจสอบว่า:")
-        print("   1) เปิด LDPlayer ทิ้งไว้แล้ว")
-        print("   2) path ของ adb.exe ถูกต้อง:", ADB_PATH)
-        print("   3) ลองรัน `adb devices` เองใน cmd เพื่อดู device id ที่ถูกต้อง")
+    if device_id not in output:
+        print(f"!! ไม่พบ device '{device_id}' ใน `adb devices`")
+        print("!! ตรวจสอบว่าเปิด Emulator และพอร์ตถูกต้องแล้ว:", ADB_PATH)
         return False
+    print(f"✅ เชื่อมต่อ ADB สำเร็จ: {device_id}")
     return True
 
 
@@ -110,3 +126,58 @@ def adb_long_press(x, y, duration_ms=150):
         ["shell", "input", "swipe", xi, yi, xi, yi, str(int(duration_ms))],
         timeout=5,
     )
+
+
+def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180):
+    """
+    ลากนิ้วจาก (x1, y1) ไปยัง (x2, y2) แบบเส้นโค้ง Bezier (Quadratic Bezier Curve)
+    เพื่อเลียนแบบวิถีการลากนิ้วของมนุษย์จริงบนหน้าจอสัมผัส
+    """
+    import random
+    import math
+    import time
+
+    # คำนวณจุดกึ่งกลาง (Midpoint)
+    mx = (x1 + x2) / 2.0
+    my = (y1 + y2) / 2.0
+
+    # คำนวณ Vector ตั้งฉาก (Perpendicular Vector)
+    dx = x2 - x1
+    dy = y2 - y1
+    dist = math.hypot(dx, dy)
+
+    if dist < 1.0:
+        adb_tap(x1, y1)
+        return
+
+    # Normal vector ตั้งฉาก สุ่มทิศทาง (+1 หรือ -1)
+    side = random.choice([-1, 1])
+    offset = random.uniform(curve_strength * 0.5, curve_strength)
+    nx = -dy / dist * offset * side
+    ny = dx / dist * offset * side
+
+    # Control Point (P1) สำหรับ Quadratic Bezier
+    cx = mx + nx
+    cy = my + ny
+
+    # สร้างจุดบนเส้นโค้ง Bezier B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+    points = []
+    for i in range(steps + 1):
+        t = i / float(steps)
+        one_minus_t = 1.0 - t
+        px = (one_minus_t ** 2) * x1 + 2 * one_minus_t * t * cx + (t ** 2) * x2
+        py = (one_minus_t ** 2) * y1 + 2 * one_minus_t * t * cy + (t ** 2) * y2
+        points.append((int(px), int(py)))
+
+    # ลากนิ้วตามช่วงจุดย่อยๆ โดยรวมคำสั่งส่งให้ adb shell รันลวดเดียวเพื่อลด overhead ของ subprocess
+    step_duration = max(10, int(duration_ms / max(1, steps)))
+    swipe_cmds = []
+    for i in range(len(points) - 1):
+        p_start = points[i]
+        p_end = points[i + 1]
+        swipe_cmds.append(f"input swipe {p_start[0]} {p_start[1]} {p_end[0]} {p_end[1]} {step_duration}")
+
+    # เชื่อมต่อคำสั่งด้วย && เพื่อรันต่อเนื่องใน adb shell
+    full_cmd = " && ".join(swipe_cmds)
+    adb_run(["shell", full_cmd], timeout=5)
+

@@ -1,5 +1,12 @@
 import os
 import sys
+import io
+
+# บังคับ stdout/stderr ให้ใช้ UTF-8 เสมอ ป้องกัน UnicodeEncodeError บน Windows Terminal
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'buffer'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 import keyboard
 
@@ -34,6 +41,13 @@ def main():
     if "--test-line" in sys.argv:
         send_line_message("🔔 ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot")
         return
+
+    if "--test-discord" in sys.argv:
+        from notifiers.discord_notifier import send_discord_report
+        print("[Discord] กำลังทดสอบส่งข้อความแจ้งเตือน...")
+        send_discord_report("🔔 **ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot ผ่าน Discord Webhook** ✅")
+        return
+
 
     if "--test-gemini" in sys.argv:
         print("[Gemini] กำลังทดสอบ... จับภาพหน้าจอจาก LDPlayer แล้วส่งให้ Gemini บรรยาย")
