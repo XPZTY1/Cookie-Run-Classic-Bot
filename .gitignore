@@ -1,0 +1,23 @@
+# Secrets
+secrets.json
+config.json
+credentials.json
+user_profiles.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Screenshots
+pause_screenshots/
+
+# Virtual Environment
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
