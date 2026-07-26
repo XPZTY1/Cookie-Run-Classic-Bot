@@ -1,4 +1,3 @@
 @echo off
-D:\MUMU\MuMuPlayerGlobal\nx_main\adb.exe connect 127.0.0.1:5559
-cd /d "F:\CookieRunBot\CookieRunBot Mook 2"
+cd /d "F:\CookieRunBot\Cookie Run Classic Bot"
 python.exe main.py
