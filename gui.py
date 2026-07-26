@@ -13,9 +13,9 @@ from ttkbootstrap.constants import *
 import config
 import bot_engine
 from adb_client import adb_connect, grab_screen
-from secrets_loader import save_secret, ADB_DEVICE_ID
+from secrets_loader import save_secret, ADB_DEVICE_ID, get_discord_webhooks, save_discord_webhooks
 from notifiers.line_notifier import send_line_message
-from notifiers.discord_notifier import send_discord_embed, COLOR_INFO, send_discord_report
+from notifiers.discord_notifier import send_discord_embed, COLOR_INFO, send_discord_report, send_discord_test_to_url
 from notifiers.gemini_vision import describe_screen_with_gemini, read_game_score_with_gemini
 
 # path ของไอคอนแอป (วางไฟล์ icon.ico ไว้โฟลเดอร์ assets ข้างๆ ไฟล์นี้)
@@ -271,12 +271,16 @@ def run_gui():
     runs_hr_lbl = ttk.Label(stats_card, text="🔄 Runs/Hr: 0", font=("Segoe UI", 9, "bold"), bootstyle="info")
     runs_hr_lbl.grid(row=3, column=2, columnspan=2, sticky=tk.W, pady=2)
 
-    # Row 4 (Resets & Disconnects)
+    # Row 4 (Mystery Boxes & Drop Rates)
+    boxes_lbl = ttk.Label(stats_card, text="🎁 Boxes: 0 (0.0/Hr)", font=("Segoe UI", 9, "bold"), bootstyle="purple")
+    boxes_lbl.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+    # Row 5 (Resets & Disconnects)
     watchdog_lbl = ttk.Label(stats_card, text="Watchdog Resets: 0", font=("Segoe UI", 8), bootstyle="secondary")
-    watchdog_lbl.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=2)
+    watchdog_lbl.grid(row=5, column=0, sticky=tk.W, pady=2)
 
     adb_lbl = ttk.Label(stats_card, text="ADB Disconnects: 0", font=("Segoe UI", 8), bootstyle="secondary")
-    adb_lbl.grid(row=4, column=2, columnspan=2, sticky=tk.W, pady=2)
+    adb_lbl.grid(row=5, column=2, columnspan=2, sticky=tk.W, pady=2)
 
     # ---------------------------------------------------------------------------
     # 3. Settings Toggle Panel & Speed Control
@@ -486,9 +490,205 @@ def run_gui():
                 bot_engine.log_info("⚠️ Gemini OCR อ่านไม่สำเร็จ หรือไม่พบหน้าสรุปคะแนน")
         threading.Thread(target=run_test, daemon=True).start()
 
-    ttk.Button(tools_card, text="🔔 Test LINE", bootstyle="secondary-outline", width=14, command=test_line_action).pack(side=tk.LEFT, padx=5)
-    ttk.Button(tools_card, text="💬 Test Discord", bootstyle="info-outline", width=14, command=test_discord_action).pack(side=tk.LEFT, padx=5)
-    ttk.Button(tools_card, text="📸 Test Gemini OCR", bootstyle="warning-outline", width=16, command=test_gemini_action).pack(side=tk.LEFT, padx=5)
+    def open_webhook_manager_dialog(parent):
+        dialog = tk.Toplevel(parent)
+        dialog.title("🔔 จัดการโปรไฟล์ Discord Webhooks")
+        dialog.geometry("750x550")
+        dialog.minsize(650, 450)
+        dialog.resizable(True, True)
+        dialog.transient(parent)
+        dialog.grab_set()
+
+        header = ttk.Frame(dialog, padding=(15, 10))
+        header.pack(fill=tk.X)
+        ttk.Label(header, text="🔔 Discord Webhooks Manager (Multi-Profile)", font=("Segoe UI", 11, "bold"), bootstyle="info").pack(anchor=tk.W)
+        ttk.Label(header, text="สร้างโปรไฟล์ Webhook ได้หลายตัว ตั้งชื่อ เลือกเปิด/ปิด หรือทดสอบส่งแยกโปรไฟล์ได้ (สามารถขยายหน้าต่างได้)", font=("Segoe UI", 8), bootstyle="secondary").pack(anchor=tk.W)
+
+        list_frame = ttk.Frame(dialog, padding=(15, 5))
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("status", "name", "url")
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=8, selectmode="browse")
+        tree.heading("status", text="สถานะ")
+        tree.heading("name", text="ชื่อโปรไฟล์")
+        tree.heading("url", text="Webhook URL")
+
+        tree.column("status", width=80, anchor="center")
+        tree.column("name", width=200, anchor="w")
+        tree.column("url", width=420, anchor="w")
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        webhooks_data = get_discord_webhooks()
+
+        def refresh_tree():
+            for item in tree.get_children():
+                tree.delete(item)
+            for i, w in enumerate(webhooks_data):
+                st = "✅ เปิด" if w.get("enabled", True) else "❌ ปิด"
+                tree.insert("", tk.END, iid=str(i), values=(st, w.get("name", "Unnamed"), w.get("url", "")))
+
+        refresh_tree()
+
+        form_frame = ttk.Labelframe(dialog, text="➕ เพิ่ม / แก้ไขโปรไฟล์ Webhook", padding=10)
+        form_frame.pack(fill=tk.X, padx=15, pady=5)
+
+        form_grid = ttk.Frame(form_frame)
+        form_grid.pack(fill=tk.X, expand=True)
+        form_grid.columnconfigure(1, weight=1)
+
+        ttk.Label(form_grid, text="ชื่อโปรไฟล์:", font=("Segoe UI", 9)).grid(row=0, column=0, sticky=tk.W, padx=4, pady=2)
+        name_var = tk.StringVar()
+        name_entry = ttk.Entry(form_grid, textvariable=name_var, width=28)
+        name_entry.grid(row=0, column=1, sticky=tk.W, padx=4, pady=2)
+
+        ttk.Label(form_grid, text="Webhook URL:", font=("Segoe UI", 9)).grid(row=1, column=0, sticky=tk.W, padx=4, pady=2)
+        url_var = tk.StringVar()
+        url_entry = ttk.Entry(form_grid, textvariable=url_var)
+        url_entry.grid(row=1, column=1, sticky=tk.EW, padx=4, pady=2)
+
+        status_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(form_grid, text="เปิดใช้งานโปรไฟล์นี้", variable=status_var, bootstyle="success-round-toggle").grid(row=0, column=1, sticky=tk.E, padx=4, pady=2)
+
+        editing_index = [-1]
+
+        def clear_inputs():
+            name_var.set("")
+            url_var.set("")
+            status_var.set(True)
+            editing_index[0] = -1
+            save_btn.config(text="➕ เพิ่มโปรไฟล์", bootstyle="success")
+
+        def on_select(event):
+            sel = tree.selection()
+            if sel:
+                idx = int(sel[0])
+                item = webhooks_data[idx]
+                name_var.set(item.get("name", ""))
+                url_var.set(item.get("url", ""))
+                status_var.set(item.get("enabled", True))
+                editing_index[0] = idx
+                save_btn.config(text="💾 บันทึกแก้ไข", bootstyle="info")
+
+        tree.bind("<<TreeviewSelect>>", on_select)
+
+        def save_action():
+            name = name_var.get().strip()
+            url = url_var.get().strip()
+            if not name or not url:
+                bot_engine.log_info("⚠️ กรุณากรอกทั้งชื่อโปรไฟล์และ Webhook URL")
+                return
+
+            new_item = {"name": name, "url": url, "enabled": status_var.get()}
+            if 0 <= editing_index[0] < len(webhooks_data):
+                webhooks_data[editing_index[0]] = new_item
+                bot_engine.log_info(f"✏️ อัปเดตโปรไฟล์ Webhook '{name}' สำเร็จ")
+            else:
+                webhooks_data.append(new_item)
+                bot_engine.log_info(f"➕ เพิ่มโปรไฟล์ Webhook '{name}' สำเร็จ")
+
+            save_discord_webhooks(webhooks_data)
+            refresh_tree()
+            clear_inputs()
+
+        def toggle_action():
+            sel = tree.selection()
+            if not sel:
+                bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์ Webhook ในตารางก่อน")
+                return
+            idx = int(sel[0])
+            webhooks_data[idx]["enabled"] = not webhooks_data[idx].get("enabled", True)
+            save_discord_webhooks(webhooks_data)
+            refresh_tree()
+            bot_engine.log_info(f"🔘 สลับสถานะโปรไฟล์ '{webhooks_data[idx]['name']}' = {'เปิด' if webhooks_data[idx]['enabled'] else 'ปิด'}")
+
+        def delete_action():
+            sel = tree.selection()
+            if not sel:
+                bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์ Webhook ที่ต้องการลบก่อน")
+                return
+            idx = int(sel[0])
+            deleted_name = webhooks_data[idx].get("name", "")
+            del webhooks_data[idx]
+            save_discord_webhooks(webhooks_data)
+            refresh_tree()
+            clear_inputs()
+            bot_engine.log_info(f"🗑️ ลบโปรไฟล์ Webhook '{deleted_name}' เรียบร้อยแล้ว")
+
+        def test_action():
+            url = url_var.get().strip()
+            name = name_var.get().strip() or "Test Profile"
+            if not url:
+                sel = tree.selection()
+                if sel:
+                    idx = int(sel[0])
+                    url = webhooks_data[idx].get("url", "")
+                    name = webhooks_data[idx].get("name", "")
+            if not url:
+                bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์หรือกรอก Webhook URL เพื่อทดสอบ")
+                return
+
+            bot_engine.log_info(f"🧪 กำลังทดสอบส่งข้อความไปยังโปรไฟล์ '{name}'...")
+            def run_test():
+                ok = send_discord_test_to_url(url, name)
+                if ok:
+                    bot_engine.log_info(f"✅ ทดสอบส่ง Webhook '{name}' สำเร็จ!")
+                else:
+                    bot_engine.log_info(f"❌ ทดสอบส่ง Webhook '{name}' ไม่สำเร็จ ตรวจสอบ URL อีกครั้ง")
+            threading.Thread(target=run_test, daemon=True).start()
+
+        btn_box = ttk.Frame(dialog, padding=(15, 5, 15, 10))
+        btn_box.pack(fill=tk.X)
+
+        save_btn = ttk.Button(btn_box, text="➕ เพิ่มโปรไฟล์", bootstyle="success", width=14, command=save_action)
+        save_btn.pack(side=tk.LEFT, padx=3)
+
+        ttk.Button(btn_box, text="🔘 สลับเปิด/ปิด", bootstyle="warning-outline", width=13, command=toggle_action).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_box, text="🧪 ทดสอบส่ง", bootstyle="info-outline", width=12, command=test_action).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_box, text="🗑️ ลบโปรไฟล์", bootstyle="danger-outline", width=12, command=delete_action).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_box, text="🧹 เคลียร์", bootstyle="secondary-link", command=clear_inputs).pack(side=tk.RIGHT, padx=3)
+
+    # Webhook selector (per-window profile) - ช่วยให้แต่ละหน้าต่าง GUI เลือกโปรไฟล์ Webhook แยกกันได้
+    def get_webhook_options_list():
+        items = get_discord_webhooks()
+        names = [w.get("name", "Unnamed") for w in items]
+        opts = ["[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"] + names
+        return opts
+
+    webhook_sel_var = tk.StringVar(value=getattr(config, "SELECTED_DISCORD_WEBHOOK", "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"))
+    webhook_combo = ttk.Combobox(tools_card, textvariable=webhook_sel_var, values=get_webhook_options_list(), state="readonly", width=36)
+    webhook_combo.pack(side=tk.LEFT, padx=6)
+
+    def refresh_webhook_options():
+        try:
+            vals = get_webhook_options_list()
+            webhook_combo.configure(values=vals)
+            cur = webhook_sel_var.get()
+            if cur not in vals:
+                webhook_sel_var.set(vals[0])
+                config.SELECTED_DISCORD_WEBHOOK = vals[0]
+        except Exception:
+            pass
+
+    def on_webhook_select(event=None):
+        sel = webhook_sel_var.get()
+        config.SELECTED_DISCORD_WEBHOOK = sel
+        bot_engine.log_info(f"🔔 โปรไฟล์ Webhook ที่เลือก: {sel}")
+
+    webhook_combo.bind("<<ComboboxSelected>>", on_webhook_select)
+
+    def open_manager_and_refresh():
+        open_webhook_manager_dialog(root)
+        # หลังปิด dialog ให้รีเฟรชตัวเลือกใน combobox เผื่อผู้ใช้เพิ่ม/ลบโปรไฟล์
+        refresh_webhook_options()
+
+    ttk.Button(tools_card, text="🔔 Test LINE", bootstyle="secondary-outline", width=12, command=test_line_action).pack(side=tk.LEFT, padx=4)
+    ttk.Button(tools_card, text="💬 Test Discord", bootstyle="info-outline", width=12, command=test_discord_action).pack(side=tk.LEFT, padx=4)
+    ttk.Button(tools_card, text="📸 Test Gemini OCR", bootstyle="warning-outline", width=15, command=test_gemini_action).pack(side=tk.LEFT, padx=4)
+    ttk.Button(tools_card, text="⚙️ จัดการ Webhooks", bootstyle="primary", width=16, command=open_manager_and_refresh).pack(side=tk.LEFT, padx=4)
 
     # ---------------------------------------------------------------------------
     # 5. Real-time Console Log & Filter
@@ -593,6 +793,7 @@ def run_gui():
             perf = bot_engine.get_performance_metrics()
             coins_hr_lbl.config(text=f"🪙 Coins/Hr: {perf['coins_per_hour']:,}")
             runs_hr_lbl.config(text=f"🔄 Runs/Hr: {perf['runs_per_hour']}")
+            boxes_lbl.config(text=f"🎁 Boxes: {perf['total_boxes']} ({perf['boxes_per_hour']}/Hr)")
             rate_lbl.config(text=f"Success Rate: {perf['success_rate_pct']}%")
 
             if bot_engine.next_rest_time:
