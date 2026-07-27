@@ -34,6 +34,7 @@ FLOW = {
     "let_go": {
         "template": "start_button.png",
         "action": "click",
+        "delay": 1.5,
         "next_state": "over_game",
     },
 

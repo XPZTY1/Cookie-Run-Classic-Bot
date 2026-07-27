@@ -455,10 +455,9 @@ def do_fast_start_boost_fixed(count=FAST_START_BOOST_TAPS):
     """
     if not getattr(config, "ENABLE_FAST_START_BOOST", True):
         return
-    screen_w, screen_h = get_screen_size()
-    target_x = int((FAST_START_BOOST_X / 1280.0) * screen_w)
-    target_y = int((FAST_START_BOOST_Y / 720.0) * screen_h)
-    log_info(f"⚡ Fast Start Burst {count} ครั้ง ทันทีที่เข้าด่าน! (พิกัด {FAST_START_BOOST_X},{FAST_START_BOOST_Y} px)")
+    target_x = FAST_START_BOOST_X
+    target_y = FAST_START_BOOST_Y
+    log_info(f"⚡ Fast Start Burst {count} ครั้ง ทันทีที่เข้าด่าน! (พิกัด {target_x},{target_y} px)")
     delay_sec = getattr(config, "BOOST_TAP_SPEED_MS", 50) / 1000.0
     for i in range(count):
         if not running:

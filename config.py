@@ -11,7 +11,7 @@ try:
     from secrets_loader import ADB_DEVICE_ID
     DEVICE_ID = ADB_DEVICE_ID
 except Exception:
-    DEVICE_ID = "127.0.0.1:5559"
+    DEVICE_ID = "127.0.0.1:5555"
 
 
 def get_base_dir():
@@ -88,11 +88,11 @@ BOOST_TAP_SPEED_MS = 50             # ความรัวกด Fast Start Boo
 # ตั้งค่าระบบ Fast Start Boost (กดรัวทันทีตอนเริ่มวิ่ง + สแกนหาภาพ)
 # ---------------------------------------------------------------------------
 FAST_START_ENTRY_BURST = True               # True = กดรัวทันทีเมื่อเริ่มวิ่ง (แก้ปัญหา ADB สแกนภาพช้าไม่ทันเกม)
-FAST_START_BOOST_X = 640                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
-FAST_START_BOOST_Y = 460                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
+FAST_START_BOOST_X = 652                    # พิกัด X ปุ่ม Fast Start Boost (พิกัดจริงบนหน้าจอ emulator)
+FAST_START_BOOST_Y = 345                    # พิกัด Y ปุ่ม Fast Start Boost (พิกัดจริงบนหน้าจอ emulator)
 
-FAST_START_BOOST_TEMPLATE = "fast_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
-FAST_START_BOOST_TAPS = 5                   # จำนวนครั้งที่กดรัว
+FAST_START_BOOST_TEMPLATE = "fast1_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
+FAST_START_BOOST_TAPS = 20                   # จำนวนครั้งที่กดรัว
 FAST_START_BOOST_THRESHOLD = 0.65           # ความแม่นยำขั้นต่ำในการสแกนหาภาพ (0.0-1.0)
 
 # ---------------------------------------------------------------------------
