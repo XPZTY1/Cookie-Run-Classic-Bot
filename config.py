@@ -5,18 +5,9 @@ import sys
 # ตั้งค่าการเชื่อมต่อ MuMu Player (ADB)
 # ---------------------------------------------------------------------------
 
-ADB_PATH = r"D:\MUMU\MuMuPlayerGlobal\nx_main\adb.exe"
-
-try:
-    from secrets_loader import ADB_DEVICE_ID
-    DEVICE_ID = ADB_DEVICE_ID
-except Exception:
-    DEVICE_ID = "127.0.0.1:5555"
-
-
 def get_base_dir():
     """
-    หาโฟลเดอร์ฐานสำหรับอ้างอิงไฟล์ template/debug/secrets
+    หาโฟลเดอร์ฐานสำหรับอ้างอิงไฟล์ template/debug/.env
     - ถ้ารันเป็น .exe (PyInstaller): ใช้โฟลเดอร์ที่ตัว .exe วางอยู่จริง
     - ถ้ารันเป็น .py ปกติ: ใช้โฟลเดอร์ที่ไฟล์ main.py วางอยู่ (โฟลเดอร์นี้เอง เพราะ
       config.py อยู่ข้างๆ main.py เสมอ)
@@ -26,7 +17,38 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+# BASE_DIR ต้องถูกกำหนดก่อน import secrets_loader เสมอ เพราะ secrets_loader
+# ต้องใช้ BASE_DIR เพื่อหาไฟล์ .env (ไม่งั้นจะเจอ ImportError แบบเงียบๆ จาก circular import)
 BASE_DIR = get_base_dir()
+
+try:
+    from secrets_loader import ADB_DEVICE_ID, ADB_PATH as SECRET_ADB_PATH
+    DEVICE_ID = ADB_DEVICE_ID
+except Exception as e:
+    print(f"!! โหลดค่าจาก secrets_loader ไม่สำเร็จ ใช้ค่า default แทน: {e}")
+    DEVICE_ID = "127.0.0.1:5559"
+    SECRET_ADB_PATH = ""
+
+
+def find_adb_path():
+    """
+    หา path ของ adb.exe ตามลำดับ:
+    1. ค่าที่ตั้งไว้ใน .env (ADB_PATH)
+    2. ค้นหาอัตโนมัติจาก PATH ของระบบ
+    3. fallback: path เดิมของผู้พัฒนา (อาจไม่ตรงกับเครื่องคุณ)
+    """
+    if SECRET_ADB_PATH and os.path.exists(SECRET_ADB_PATH):
+        return SECRET_ADB_PATH
+
+    from shutil import which
+    found = which("adb") or which("adb.exe")
+    if found:
+        return found
+
+    return r"D:\MUMU\MuMuPlayerGlobal\nx_main\adb.exe"
+
+
+ADB_PATH = find_adb_path()
 
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 PAUSE_SCREENSHOT_DIR = os.path.join(BASE_DIR, "pause_screenshots")  # โฟลเดอร์เก็บภาพตอนหยุดทำงาน
@@ -44,7 +66,7 @@ RANDOM_TAP_Y_RANGE = (0.15, 0.55)
 RANDOM_TAP_MAX_Y_PX = 400  # เพดานสูงสุดของแกน Y (px อ้างอิงจอ 1280x720) ห้ามสุ่มแตะต่ำกว่าระดับนี้
 
 
-# โมเดล Gemini ที่ใช้ (ฟรีเทียร์ เช่น gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash)
+# โมเดล Gemini ที่ใช้ (ฟรีเทียร์)
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # state เริ่มต้นทุกครั้งที่กด F6 (ใช้ร่วมกันระหว่าง bot_engine และ flows/flow_config)
@@ -88,11 +110,11 @@ BOOST_TAP_SPEED_MS = 50             # ความรัวกด Fast Start Boo
 # ตั้งค่าระบบ Fast Start Boost (กดรัวทันทีตอนเริ่มวิ่ง + สแกนหาภาพ)
 # ---------------------------------------------------------------------------
 FAST_START_ENTRY_BURST = True               # True = กดรัวทันทีเมื่อเริ่มวิ่ง (แก้ปัญหา ADB สแกนภาพช้าไม่ทันเกม)
-FAST_START_BOOST_X = 652                    # พิกัด X ปุ่ม Fast Start Boost (พิกัดจริงบนหน้าจอ emulator)
-FAST_START_BOOST_Y = 345                    # พิกัด Y ปุ่ม Fast Start Boost (พิกัดจริงบนหน้าจอ emulator)
+FAST_START_BOOST_X = 640                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
+FAST_START_BOOST_Y = 460                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
 
-FAST_START_BOOST_TEMPLATE = "fast1_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
-FAST_START_BOOST_TAPS = 20                   # จำนวนครั้งที่กดรัว
+FAST_START_BOOST_TEMPLATE = "fast_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
+FAST_START_BOOST_TAPS = 5                   # จำนวนครั้งที่กดรัว
 FAST_START_BOOST_THRESHOLD = 0.65           # ความแม่นยำขั้นต่ำในการสแกนหาภาพ (0.0-1.0)
 
 # ---------------------------------------------------------------------------
@@ -119,10 +141,9 @@ SCHEDULE_CHECK_INTERVAL = 30      # ตรวจสอบตารางเว�
 # ---------------------------------------------------------------------------
 DISCORD_REPORT_ENABLED = True     # True = ส่งรายงาน Discord, False = ปิด
 DISCORD_REPORT_EVERY_N_RUNS = 10  # ส่งรายงานทุกกี่รอบที่เล่นสำเร็จ
-SELECTED_DISCORD_WEBHOOK = "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"  # โปรไฟล์ Webhook ที่เลือกใช้งานเฉพาะสำหรับอินสแตนซ์นี้
 
 # ---------------------------------------------------------------------------
 # ระบบ D: OCR Score Reading — อ่านคะแนน/เหรียญตอนจบเกมด้วย Gemini
 # ---------------------------------------------------------------------------
 OCR_SCORE_ENABLED = True          # True = เปิดอ่านคะแนน (ใช้ Gemini API), False = ปิด
-OCR_SCORE_DELAY = 5            # รอกี่วินาทีหลังจบเกมก่อนจับภาพเพื่ออ่านคะแนน
+OCR_SCORE_DELAY = 1.5             # รอกี่วินาทีหลังจบเกมก่อนจับภาพเพื่ออ่านคะแนน

@@ -1,23 +1,8 @@
-# Secrets
-secrets.json
-config.json
-credentials.json
-user_profiles.json
-
-# Python
 __pycache__/
-*.py[cod]
-
-# Screenshots
-pause_screenshots/
-
-# Virtual Environment
-venv/
-.venv/
-
-# IDE
-.vscode/
-.idea/
-
-# Environment
+*.pyc
 .env
+secrets.json
+bot_stats.json
+user_profiles.json
+pause_screenshots/
+*.log
