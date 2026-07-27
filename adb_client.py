@@ -181,3 +181,39 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
     full_cmd = " && ".join(swipe_cmds)
     adb_run(["shell", full_cmd], timeout=5)
 
+
+def find_mumu_ports():
+    """
+    ค้นหาพอร์ต ADB ของ MuMu Player ที่กำลังเปิดอยู่อัตโนมัติ
+    รองรับทั้ง MuMu Player 6, MuMu Player 9 และ MuMu Player 12 (Multi-instance)
+    """
+    import socket
+
+    # พอร์ตมาตรฐานยอดนิยมของ MuMu Player (5559, 7555 และ 16384+N*32 สำหรับ MuMu 12)
+    candidate_ports = [5559, 7555, 5555] + [16384 + i * 32 for i in range(16)]
+    active_ports = []
+
+    for port in candidate_ports:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.15)
+            res = s.connect_ex(("127.0.0.1", port))
+            s.close()
+            if res == 0:
+                dev = f"127.0.0.1:{port}"
+                if dev not in active_ports:
+                    active_ports.append(dev)
+        except Exception:
+            pass
+
+    # พยายามเรียก adb connect สั้นๆ กับพอร์ตที่พบ เพื่อลงทะเบียนกับ ADB server
+    connected_ports = []
+    for dev in active_ports:
+        try:
+            subprocess.run([ADB_PATH, "connect", dev], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
+            connected_ports.append(dev)
+        except Exception:
+            pass
+
+    return connected_ports if connected_ports else active_ports
+

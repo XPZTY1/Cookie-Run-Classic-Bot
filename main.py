@@ -10,6 +10,7 @@ if hasattr(sys.stderr, 'buffer'):
 
 import keyboard
 
+import config
 from config import DEVICE_ID, TEMPLATE_DIR
 from adb_client import adb_connect, grab_screen
 from notifiers.line_notifier import send_line_message
@@ -24,8 +25,24 @@ from bot_engine import bot_loop, start_bot, stop_bot, quit_program
 
 
 def main():
-    if not adb_connect():
-        print("!! ไม่สามารถเชื่อมต่อ LDPlayer ผ่าน ADB ได้ กรุณาตรวจสอบก่อนใช้งานต่อ")
+    # ตรวจสอบพารามิเตอร์ --port หรือ --device บน Command Line ก่อนเริ่มการเชื่อมต่อ ADB
+    target_device = None
+    if "--port" in sys.argv:
+        idx = sys.argv.index("--port")
+        if len(sys.argv) > idx + 1:
+            port_val = sys.argv[idx + 1].strip()
+            target_device = f"127.0.0.1:{port_val}" if ":" not in port_val else port_val
+    elif "--device" in sys.argv:
+        idx = sys.argv.index("--device")
+        if len(sys.argv) > idx + 1:
+            target_device = sys.argv[idx + 1].strip()
+
+    if target_device:
+        config.DEVICE_ID = target_device
+        print(f"[Multi-Instance] ระบุ Device/Port จาก Command Line: {target_device}")
+
+    if not adb_connect(target_device):
+        print("!! ไม่สามารถเชื่อมต่อ Emulator ผ่าน ADB ได้ กรุณาตรวจสอบก่อนใช้งานต่อ")
         return
 
     if "--capture" in sys.argv:
@@ -48,9 +65,8 @@ def main():
         send_discord_report("🔔 **ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot ผ่าน Discord Webhook** ✅")
         return
 
-
     if "--test-gemini" in sys.argv:
-        print("[Gemini] กำลังทดสอบ... จับภาพหน้าจอจาก LDPlayer แล้วส่งให้ Gemini บรรยาย")
+        print("[Gemini] กำลังทดสอบ... จับภาพหน้าจอจาก Emulator แล้วส่งให้ Gemini บรรยาย")
         screen = grab_screen()
         if screen is None:
             print("!! จับภาพหน้าจอไม่สำเร็จ ตรวจสอบการเชื่อมต่อ ADB ก่อน")
@@ -71,17 +87,27 @@ def main():
         print("   ตัวอย่าง: python main.py --capture")
         return
 
-    # ลงทะเบียน Hotkeys เผื่อผู้ใช้ต้องการกดผ่านแป้นพิมพ์ขณะหน้าต่าง GUI เปิดอยู่
-    keyboard.add_hotkey("F6", start_bot)
-    keyboard.add_hotkey("F7", stop_bot)
-    keyboard.add_hotkey("F9", quit_program)
+    # ลงทะเบียน Hotkeys เฉพาะเมื่อไม่ได้ระบุ --no-hotkey (ป้องกันปุ่ม F6/F7/F9 ตีกันเมื่อเปิดหลายจอ)
+    use_hotkey = "--no-hotkey" not in sys.argv and "--no-hotkeys" not in sys.argv
+    if use_hotkey:
+        try:
+            keyboard.add_hotkey("F6", start_bot)
+            keyboard.add_hotkey("F7", stop_bot)
+            keyboard.add_hotkey("F9", quit_program)
+        except Exception as e:
+            print(f"⚠️ ไม่สามารถตั้งค่า Global Hotkeys ได้: {e}")
+    else:
+        print("[Multi-Instance] ปิดการทำงาน Global Hotkeys (F6/F7/F9) เพื่อป้องกันปุ่มตีกันระหว่างหลายหน้าต่าง")
 
     # หากผู้ใช้ระบุ --no-gui จะรันบน console แบบเดิม
     if "--no-gui" in sys.argv:
         print("=" * 50)
         print("Cookie Run Classic Auto Bot (Console Mode)")
-        print("Device:", DEVICE_ID)
-        print("F6 = เริ่มออโต้ | F7 = หยุดออโต้ | F9 = ออกจากโปรแกรม")
+        print("Device:", getattr(config, "DEVICE_ID", DEVICE_ID))
+        if use_hotkey:
+            print("F6 = เริ่มออโต้ | F7 = หยุดออโต้ | F9 = ออกจากโปรแกรม")
+        else:
+            print("(Global Hotkeys ถูกปิดใช้งาน)")
         print("=" * 50)
         bot_loop()
     else:

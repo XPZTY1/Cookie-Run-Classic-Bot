@@ -168,10 +168,11 @@ _interrupt_last_click = {}
 # ---------------------------------------------------------------------------
 
 def load_global_stats():
-    """โหลดสถิติรวมทั้งหมดจากไฟล์ json"""
-    if os.path.exists(STATS_FILE_PATH):
+    """โหลดสถิติรวมทั้งหมดจากไฟล์ json (แยกตามพอร์ตของอินสแตนซ์)"""
+    stats_path = config.get_stats_file_path()
+    if os.path.exists(stats_path):
         try:
-            with open(STATS_FILE_PATH, "r", encoding="utf-8") as f:
+            with open(stats_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
@@ -184,7 +185,8 @@ def load_global_stats():
     }
 
 def save_global_stats(session_done=False):
-    """บันทึกสถิติรวมและข้อมูลประวัติประจุลงไฟล์ json"""
+    """บันทึกสถิติรวมและข้อมูลประวัติประจุลงไฟล์ json (แยกตามพอร์ตของอินสแตนซ์)"""
+    stats_path = config.get_stats_file_path()
     global_stats = load_global_stats()
     
     # อัปเดตข้อมูล Session ล่าสุด
@@ -213,7 +215,7 @@ def save_global_stats(session_done=False):
             global_stats["history"].pop(0)
 
     try:
-        with open(STATS_FILE_PATH, "w", encoding="utf-8") as f:
+        with open(stats_path, "w", encoding="utf-8") as f:
             json.dump(global_stats, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(f"[Stats] ไม่สามารถเขียนไฟล์สถิติได้: {e}")

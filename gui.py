@@ -12,7 +12,7 @@ from ttkbootstrap.constants import *
 
 import config
 import bot_engine
-from adb_client import adb_connect, grab_screen
+from adb_client import adb_connect, grab_screen, find_mumu_ports
 from secrets_loader import save_secret, ADB_DEVICE_ID, get_discord_webhooks, save_discord_webhooks
 from notifiers.line_notifier import send_line_message
 from notifiers.discord_notifier import send_discord_embed, COLOR_INFO, send_discord_report, send_discord_test_to_url
@@ -92,12 +92,15 @@ def force_taskbar_icon(root, icon_path):
 
 
 def run_gui():
+    current_device = getattr(config, "DEVICE_ID", ADB_DEVICE_ID)
+
     # ตรวจสอบการเชื่อมต่อ ADB เบื้องต้น
-    adb_connect()
+    adb_connect(current_device)
 
     if sys.platform.startswith("win"):
         try:
-            myappid = "cookierunbot.gui.2.0"
+            dev_tag = current_device.replace(":", "_").replace(".", "_")
+            myappid = f"cookierunbot.gui.2.0.{dev_tag}"
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
             pass
@@ -106,7 +109,7 @@ def run_gui():
     # ttkbootstrap Window + Theme
     # ---------------------------------------------------------------------------
     root = ttk.Window(themename="darkly")
-    root.title("Cookie Run Classic Auto Bot — Modern Dashboard v2.0")
+    root.title(f"Cookie Run Classic Auto Bot [{current_device}] — Modern Dashboard v2.0")
     root.geometry("860x780")
     root.minsize(800, 700)
     root.resizable(True, True)
@@ -161,7 +164,7 @@ def run_gui():
         "BlueStacks": "127.0.0.1:5555"
     }
 
-    adb_entry_var = tk.StringVar(value=getattr(config, "DEVICE_ID", ADB_DEVICE_ID))
+    adb_entry_var = tk.StringVar(value=current_device)
 
     adb_entry = ttk.Entry(adb_frame, textvariable=adb_entry_var, width=16, font=("Consolas", 9))
     adb_entry.pack(side=tk.LEFT, padx=3)
@@ -191,10 +194,36 @@ def run_gui():
         bot_engine.log_info(f"🔌 กำลังพยายามเชื่อมต่อ ADB ไปที่ {target}...")
         success = adb_connect(target)
         if success:
-            save_secret("adb_device_id", target)
-            bot_engine.log_info(f"✅ บันทึกพอร์ต {target} ลง secrets.json เรียบร้อยแล้ว")
+            config.DEVICE_ID = target
+            root.title(f"Cookie Run Classic Auto Bot [{target}] — Modern Dashboard v2.0")
+            bot_engine.log_info(f"✅ เชื่อมต่อพอร์ต {target} เรียบร้อยแล้ว (อัปเดตชื่อหน้าต่างแล้ว)")
         else:
             bot_engine.log_info(f"❌ เชื่อมต่อ {target} ไม่สำเร็จ ตรวจสอบการเปิด Emulator")
+
+    def scan_mumu_action():
+        bot_engine.log_info("🔍 กำลังค้นหาพอร์ต MuMu Player อัตโนมัติ...")
+        found = find_mumu_ports()
+        if found:
+            for p in found:
+                port_num = p.split(":")[-1]
+                label = f"MuMu Auto ({port_num})"
+                preset_map[label] = p
+            preset_combo.configure(values=list(preset_map.keys()))
+            adb_entry_var.set(found[0])
+            first_port_num = found[0].split(":")[-1]
+            preset_combo.set(f"MuMu Auto ({first_port_num})")
+            bot_engine.log_info(f"✅ ค้นพบพอร์ต MuMu Player ({len(found)} จอ): {', '.join(found)}")
+        else:
+            bot_engine.log_info("⚠️ ไม่พบพอร์ต MuMu Player ที่กำลังเปิดอยู่ (โปรดตรวจสอบว่าเปิด MuMu Player อยู่หรือไม่)")
+
+    scan_btn = ttk.Button(
+        adb_frame,
+        text="🔄 หาพอร์ต MuMu",
+        bootstyle="warning-outline",
+        width=14,
+        command=scan_mumu_action
+    )
+    scan_btn.pack(side=tk.LEFT, padx=3)
 
     conn_btn = ttk.Button(
         adb_frame,

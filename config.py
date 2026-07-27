@@ -81,6 +81,12 @@ ADB_MAX_RECONNECT_ATTEMPTS = 5   # จำนวนครั้งสูงสุ
 # ---------------------------------------------------------------------------
 # ตั้งค่าระบบสถิติและตรวจสอบ (Phase 2)
 # ---------------------------------------------------------------------------
+def get_stats_file_path():
+    """ดึง path ของไฟล์สถิติ แยกตาม Device/Port เพื่อไม่ให้รันหลายโปรแกรมแล้วสถิติตีกัน"""
+    dev = getattr(sys.modules.get("config"), "DEVICE_ID", DEVICE_ID)
+    dev_clean = dev.replace(":", "_").replace(".", "_")
+    return os.path.join(BASE_DIR, f"bot_stats_{dev_clean}.json")
+
 STATS_FILE_PATH = os.path.join(BASE_DIR, "bot_stats.json")
 HEALTH_CHECK_WARNING_THRESHOLD = 0.50 # แจ้งเตือนในตอนเริ่มรันบอทหาก score ของ template ต่ำกว่า 50%
 
@@ -110,11 +116,11 @@ BOOST_TAP_SPEED_MS = 50             # ความรัวกด Fast Start Boo
 # ตั้งค่าระบบ Fast Start Boost (กดรัวทันทีตอนเริ่มวิ่ง + สแกนหาภาพ)
 # ---------------------------------------------------------------------------
 FAST_START_ENTRY_BURST = True               # True = กดรัวทันทีเมื่อเริ่มวิ่ง (แก้ปัญหา ADB สแกนภาพช้าไม่ทันเกม)
-FAST_START_BOOST_X = 640                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
-FAST_START_BOOST_Y = 460                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
+FAST_START_BOOST_X = 652                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
+FAST_START_BOOST_Y = 345                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
 
-FAST_START_BOOST_TEMPLATE = "fast_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
-FAST_START_BOOST_TAPS = 5                   # จำนวนครั้งที่กดรัว
+FAST_START_BOOST_TEMPLATE = "fast1_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
+FAST_START_BOOST_TAPS = 20                   # จำนวนครั้งที่กดรัว
 FAST_START_BOOST_THRESHOLD = 0.65           # ความแม่นยำขั้นต่ำในการสแกนหาภาพ (0.0-1.0)
 
 # ---------------------------------------------------------------------------
@@ -147,3 +153,4 @@ DISCORD_REPORT_EVERY_N_RUNS = 10  # ส่งรายงานทุกกี�
 # ---------------------------------------------------------------------------
 OCR_SCORE_ENABLED = True          # True = เปิดอ่านคะแนน (ใช้ Gemini API), False = ปิด
 OCR_SCORE_DELAY = 1.5             # รอกี่วินาทีหลังจบเกมก่อนจับภาพเพื่ออ่านคะแนน
+SELECTED_DISCORD_WEBHOOK = "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"  # โปรไฟล์ Webhook ที่เลือกใช้งานเฉพาะสำหรับอินสแตนซ์นี้
