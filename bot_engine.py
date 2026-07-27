@@ -87,30 +87,38 @@ session_stats = {
     "elapsed_seconds": 0,
     "last_score": 0,
     "last_coins": 0,
+    "last_boxes": 0,
     "scores_history": [],
-    "coins_history": []
+    "coins_history": [],
+    "boxes_history": []
 }
 
 
 def get_performance_metrics():
-    """คำนวณอัตราการฟาร์ม Coins/Hr, Runs/Hr และ Success Rate %"""
+    """คำนวณอัตราการฟาร์ม Coins/Hr, Runs/Hr, Boxes/Hr และ Success Rate %"""
     if session_stats["start_time"] is None:
-        return {"coins_per_hour": 0, "runs_per_hour": 0, "success_rate_pct": 0.0}
+        return {"coins_per_hour": 0, "runs_per_hour": 0, "boxes_per_hour": 0.0, "boxes_per_run": 0.0, "total_boxes": 0, "success_rate_pct": 0.0}
 
     elapsed_sec = time.time() - session_stats["start_time"]
     elapsed_hours = elapsed_sec / 3600.0
 
     total_coins = sum(session_stats["coins_history"])
+    total_boxes = sum(session_stats["boxes_history"])
     total_runs = session_stats["total_runs"]
     success_runs = session_stats["successful_runs"]
 
     coins_per_hr = int(total_coins / elapsed_hours) if elapsed_hours > 0.01 else 0
     runs_per_hr = int(total_runs / elapsed_hours) if elapsed_hours > 0.01 else 0
+    boxes_per_hr = round(total_boxes / elapsed_hours, 1) if elapsed_hours > 0.01 else 0.0
+    boxes_per_run = round(total_boxes / total_runs, 2) if total_runs > 0 else 0.0
     success_rate = round((success_runs / total_runs) * 100, 1) if total_runs > 0 else 0.0
 
     return {
         "coins_per_hour": coins_per_hr,
         "runs_per_hour": runs_per_hr,
+        "boxes_per_hour": boxes_per_hr,
+        "boxes_per_run": boxes_per_run,
+        "total_boxes": total_boxes,
         "success_rate_pct": success_rate,
     }
 
@@ -171,6 +179,7 @@ def load_global_stats():
         "all_time_runs": 0,
         "all_time_success": 0,
         "all_time_watchdog_resets": 0,
+        "all_time_boxes": 0,
         "history": []
     }
 
@@ -186,12 +195,14 @@ def save_global_stats(session_done=False):
         global_stats["all_time_runs"] += session_stats["total_runs"]
         global_stats["all_time_success"] += session_stats["successful_runs"]
         global_stats["all_time_watchdog_resets"] += session_stats["watchdog_resets"]
+        global_stats["all_time_boxes"] = global_stats.get("all_time_boxes", 0) + sum(session_stats["boxes_history"])
         
         # บันทึกลงประวัติ history
         history_entry = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "runs": session_stats["total_runs"],
             "success": session_stats["successful_runs"],
+            "boxes": sum(session_stats["boxes_history"]),
             "watchdog_resets": session_stats["watchdog_resets"],
             "adb_disconnects": session_stats["adb_disconnects"],
             "duration_seconds": elapsed
@@ -1041,25 +1052,41 @@ def bot_loop():
                                 break
                             time.sleep(0.1)
 
-                        log_info("📸 จับภาพหน้าจอใหม่เพื่ออ่านคะแนนและเหรียญด้วย Gemini...")
-                        fresh_screen = grab_screen()
-                        if fresh_screen is None:
-                            fresh_screen = screen
+                        log_info("⏳ [OCR] กำลังประมวลผลอ่านคะแนนและเหรียญด้วย Gemini...")
+                        
+                        score_data = None
+                        max_ocr_attempts = 2
+                        for attempt in range(1, max_ocr_attempts + 1):
+                            fresh_screen = grab_screen()
+                            if fresh_screen is None:
+                                fresh_screen = screen
 
-                        score_data = read_game_score_with_gemini(fresh_screen)
+                            score_data = read_game_score_with_gemini(fresh_screen)
+                            if score_data and (score_data.get("score", 0) > 0 or score_data.get("coins", 0) > 0 or score_data.get("boxes", 0) > 0):
+                                break
+                            
+                            if attempt < max_ocr_attempts:
+                                log_info(f"🔄 [OCR] ผลลัพธ์ยังไม่สมบูรณ์ ลองอ่านซ้ำครั้งที่ {attempt + 1}/{max_ocr_attempts}...")
+                                time.sleep(1.5)
+
                         if score_data:
+                            boxes_cnt = score_data.get("boxes", 0)
                             session_stats["last_score"] = score_data["score"]
                             session_stats["last_coins"] = score_data["coins"]
+                            session_stats["last_boxes"] = boxes_cnt
                             session_stats["scores_history"].append(score_data["score"])
                             session_stats["coins_history"].append(score_data["coins"])
+                            session_stats["boxes_history"].append(boxes_cnt)
 
+                            metrics = get_performance_metrics()
                             round_num = session_stats['successful_runs'] + 1
                             score_line_msg = (
                                 f"🏁 สรุปผลคะแนนรอบที่ {round_num}\n"
                                 f"🏆 คะแนน: {score_data['score']:,}\n"
-                                f"🪙 เหรียญ: {score_data['coins']:,}"
+                                f"🪙 เหรียญ: {score_data['coins']:,}\n"
+                                f"🎁 กล่องสมบัติ: {boxes_cnt} กล่อง (เฉลี่ย {metrics['boxes_per_hour']} กล่อง/ชม.)"
                             )
-                            log_info(f"📊 อ่านคะแนนสำเร็จ: {score_data['score']:,} | เหรียญ: {score_data['coins']:,}")
+                            log_info(f"📊 อ่านคะแนนสำเร็จ: {score_data['score']:,} | เหรียญ: {score_data['coins']:,} | 🎁 กล่อง: {boxes_cnt} (เฉลี่ย {metrics['boxes_per_hour']}/ชม.)")
                             send_line_message(score_line_msg)
                             if getattr(config, "DISCORD_REPORT_ENABLED", True):
                                 send_discord_embed(
@@ -1067,13 +1094,15 @@ def bot_loop():
                                     fields=[
                                         {"name": "🏆 คะแนน", "value": f"`{score_data['score']:,}`", "inline": True},
                                         {"name": "🪙 เหรียญ", "value": f"`{score_data['coins']:,}`", "inline": True},
+                                        {"name": "🎁 กล่องสมบัติ", "value": f"`{boxes_cnt}` (`{metrics['boxes_per_hour']}/ชม.`)", "inline": True},
                                     ],
                                     color=COLOR_INFO,
                                 )
+                            log_info("✅ ส่งข้อความสรุปผลคะแนนและสถิติกล่องสมบัติเข้า LINE / Discord เรียบร้อยแล้ว")
                         else:
-                            log_info("⚠️ ไม่สามารถอ่านคะแนนจากหน้าจอได้ (Gemini OCR อ่านไม่สำเร็จ)")
+                            log_info("⚠️ ไม่สามารถอ่านคะแนนจากหน้าจอได้ (Gemini OCR อ่านไม่สำเร็จ หรือ API key ไม่ถูกต้อง)")
 
-                    log_info("🔘 อ่านและส่งข้อมูลคะแนนเรียบร้อย -> กำลังกดปุ่ม OK เพื่อผ่านหน้าจบเกม...")
+                    log_info("🔘 กระบวนการ OCR และส่งข้อความเสร็จสิ้น -> กำลังกดปุ่ม OK เพื่อผ่านหน้าจบเกม...")
 
                 log_debug(f"[match] เจอ template: {template_name} -> ทำ action: {action_name} ที่พิกัด {match}")
 

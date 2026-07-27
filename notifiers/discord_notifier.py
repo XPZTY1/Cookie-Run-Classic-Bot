@@ -1,44 +1,47 @@
 import requests
 
 import config
-from secrets_loader import DISCORD_WEBHOOK_URL
+from secrets_loader import get_discord_webhooks
 
 # ---------------------------------------------------------------------------
-# Discord Webhook Notifier: ส่งรายงานสรุปผลการทำงานของบอทเข้า Discord
+# Discord Webhook Notifier: ส่งรายงานสรุปผลการทำงานของบอทเข้า Discord (รองรับ Multi-Profile)
 # ---------------------------------------------------------------------------
-# วิธีตั้งค่า:
-#   1) ไปที่ Discord Server -> Channel Settings -> Integrations -> Webhooks -> Create Webhook
-#   2) Copy Webhook URL แล้วใส่ใน secrets.json ที่ key "discord_webhook_url"
-#   3) ตั้งค่า DISCORD_REPORT_ENABLED = True และ DISCORD_REPORT_EVERY_N_RUNS ใน config.py
 
-# สีของ Embed แต่ละแบบ (Discord ใช้ค่า integer ของ hex สี)
 COLOR_SUCCESS = 0x22c55e   # เขียว — รายงานปกติ / สำเร็จ
 COLOR_WARNING = 0xf59e0b   # เหลืองส้ม — แจ้งเตือน
 COLOR_INFO    = 0x3b82f6   # น้ำเงิน — ข้อมูลทั่วไป
 COLOR_ERROR   = 0xef4444   # แดง — error / crash
 
 
-def _check_enabled_and_url() -> bool:
-    """ตรวจสอบว่า Discord Report เปิดอยู่และมี Webhook URL ก่อนส่งทุกครั้ง"""
+def get_active_discord_webhooks():
+    """ดึงรายชื่อ (name, url) ของ Webhook ที่เปิดใช้งาน (enabled=True) ตามโปรไฟล์ที่เลือก"""
     if not getattr(config, "DISCORD_REPORT_ENABLED", True):
-        return False
-    if not DISCORD_WEBHOOK_URL:
-        print("[Discord] ยังไม่ได้ตั้งค่า discord_webhook_url ใน secrets.json — ข้ามการรายงาน")
-        print("[Discord] ให้เพิ่ม \"discord_webhook_url\": \"https://discord.com/api/webhooks/...\" ใน secrets.json")
-        return False
-    return True
+        return []
+
+    selected_target = getattr(config, "SELECTED_DISCORD_WEBHOOK", "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน")
+    if selected_target == "[NONE] ปิดใช้งาน":
+        return []
+
+    all_webhooks = get_discord_webhooks()
+    active = []
+    for item in all_webhooks:
+        if isinstance(item, dict) and item.get("enabled", True) and item.get("url"):
+            name = item.get("name", "Webhook Profile")
+            url = item.get("url")
+            if selected_target.startswith("[ALL]") or selected_target == name:
+                active.append((name, url))
+
+    if not active:
+        print("[Discord] ไม่มี Discord Webhook Profile ตรงตามเงื่อนไขที่เลือก — ข้ามการรายงาน")
+    return active
 
 
 def send_discord_embed(title: str, fields: list, color: int = COLOR_SUCCESS, description: str = ""):
     """
-    ส่งข้อมูลรายงานเข้า Discord ในรูปแบบ Embed (สวยกว่า plain text มาก)
-
-    title       : หัวข้อของ Embed
-    fields      : list ของ dict {"name": str, "value": str, "inline": bool}
-    color       : สีขอบซ้ายของ Embed (ใช้ค่า int เช่น COLOR_SUCCESS)
-    description : ข้อความบรรทัดสรุปด้านบนของ Embed (optional)
+    ส่งข้อมูลรายงานเข้า Discord ให้ทุก Webhook Profile ที่เปิดใช้งานอยู่ในรูปแบบ Embed
     """
-    if not _check_enabled_and_url():
+    active_webhooks = get_active_discord_webhooks()
+    if not active_webhooks:
         return
 
     from datetime import datetime, timezone
@@ -59,22 +62,23 @@ def send_discord_embed(title: str, fields: list, color: int = COLOR_SUCCESS, des
         "embeds": [embed],
     }
 
-    try:
-        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-        if resp.status_code in (200, 204):
-            print("[Discord] ส่ง Embed สำเร็จ ✅")
-        else:
-            print(f"[Discord] ส่ง Embed ไม่สำเร็จ ({resp.status_code}): {resp.text[:200]}")
-    except Exception as e:
-        print(f"[Discord] เกิดข้อผิดพลาดตอนส่ง Embed: {e}")
+    for name, url in active_webhooks:
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            if resp.status_code in (200, 204):
+                print(f"[Discord ({name})] ส่ง Embed สำเร็จ ✅")
+            else:
+                print(f"[Discord ({name})] ส่ง Embed ไม่สำเร็จ ({resp.status_code}): {resp.text[:150]}")
+        except Exception as e:
+            print(f"[Discord ({name})] เกิดข้อผิดพลาด: {e}")
 
 
 def send_discord_report(text: str):
     """
-    ส่งข้อความรายงานแบบ plain text ผ่าน Discord Webhook (backward compatibility)
-    text: ข้อความที่ต้องการส่ง (รองรับ Discord Markdown)
+    ส่งข้อความรายงานแบบ plain text ให้ทุก Webhook Profile ที่เปิดใช้งานอยู่
     """
-    if not _check_enabled_and_url():
+    active_webhooks = get_active_discord_webhooks()
+    if not active_webhooks:
         return
 
     payload = {
@@ -82,11 +86,44 @@ def send_discord_report(text: str):
         "username": "🍪 Cookie Run Bot",
     }
 
+    for name, url in active_webhooks:
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            if resp.status_code in (200, 204):
+                print(f"[Discord ({name})] ส่งรายงานสำเร็จ ✅")
+            else:
+                print(f"[Discord ({name})] ส่งรายงานไม่สำเร็จ ({resp.status_code}): {resp.text[:150]}")
+        except Exception as e:
+            print(f"[Discord ({name})] เกิดข้อผิดพลาด: {e}")
+
+
+def send_discord_test_to_url(url: str, name: str = "Test Profile") -> bool:
+    """
+    ส่งข้อความทดสอบไปยัง Webhook URL รายโปรไฟล์แบบเฉพาะเจาะจง (ใช้ทดสอบใน GUI)
+    """
+    if not url:
+        return False
+
+    from datetime import datetime, timezone
+    embed = {
+        "title": f"🔔 ทดสอบการเชื่อมต่อ — โปรไฟล์ '{name}'",
+        "color": COLOR_SUCCESS,
+        "fields": [
+            {"name": "สถานะการเชื่อมต่อ", "value": "`ใช้งานได้ปกติ ✅`", "inline": True},
+            {"name": "ชื่อโปรไฟล์", "value": f"`{name}`", "inline": True}
+        ],
+        "footer": {
+            "text": "🍪 Cookie Run Classic Auto Bot • Multi-Webhook Manager"
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    payload = {
+        "username": "🍪 Cookie Run Bot",
+        "embeds": [embed]
+    }
+
     try:
-        resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-        if resp.status_code in (200, 204):
-            print("[Discord] ส่งรายงานสำเร็จ ✅")
-        else:
-            print(f"[Discord] ส่งรายงานไม่สำเร็จ ({resp.status_code}): {resp.text[:200]}")
-    except Exception as e:
-        print(f"[Discord] เกิดข้อผิดพลาดตอนส่งรายงาน: {e}")
+        resp = requests.post(url, json=payload, timeout=10)
+        return resp.status_code in (200, 204)
+    except Exception:
+        return False

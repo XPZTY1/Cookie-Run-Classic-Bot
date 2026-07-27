@@ -1,264 +1,8 @@
 {
-    "all_time_runs": 675,
-    "all_time_success": 595,
+    "all_time_runs": 932,
+    "all_time_success": 822,
     "all_time_watchdog_resets": 4,
     "history": [
-        {
-            "date": "2026-07-24 23:05:00",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 235
-        },
-        {
-            "date": "2026-07-24 23:07:14",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 119
-        },
-        {
-            "date": "2026-07-24 23:14:15",
-            "runs": 2,
-            "success": 1,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 413
-        },
-        {
-            "date": "2026-07-25 00:07:13",
-            "runs": 13,
-            "success": 12,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 3159
-        },
-        {
-            "date": "2026-07-25 01:34:01",
-            "runs": 20,
-            "success": 19,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 5175
-        },
-        {
-            "date": "2026-07-25 01:34:30",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 8
-        },
-        {
-            "date": "2026-07-25 01:36:37",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 120
-        },
-        {
-            "date": "2026-07-25 01:45:06",
-            "runs": 2,
-            "success": 1,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 490
-        },
-        {
-            "date": "2026-07-25 01:45:18",
-            "runs": 3,
-            "success": 2,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 502
-        },
-        {
-            "date": "2026-07-25 01:50:05",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 278
-        },
-        {
-            "date": "2026-07-25 01:50:16",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 9
-        },
-        {
-            "date": "2026-07-25 01:50:21",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 4
-        },
-        {
-            "date": "2026-07-25 01:59:07",
-            "runs": 2,
-            "success": 1,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 523
-        },
-        {
-            "date": "2026-07-25 01:59:23",
-            "runs": 0,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 1
-        },
-        {
-            "date": "2026-07-25 01:59:51",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 17
-        },
-        {
-            "date": "2026-07-25 08:07:51",
-            "runs": 78,
-            "success": 77,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 22078
-        },
-        {
-            "date": "2026-07-25 08:09:45",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 6
-        },
-        {
-            "date": "2026-07-25 10:50:00",
-            "runs": 24,
-            "success": 23,
-            "watchdog_resets": 2,
-            "adb_disconnects": 0,
-            "duration_seconds": 9558
-        },
-        {
-            "date": "2026-07-25 11:25:03",
-            "runs": 7,
-            "success": 6,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 1940
-        },
-        {
-            "date": "2026-07-25 11:27:19",
-            "runs": 7,
-            "success": 6,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 2076
-        },
-        {
-            "date": "2026-07-26 08:48:37",
-            "runs": 2,
-            "success": 1,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 467
-        },
-        {
-            "date": "2026-07-26 08:48:46",
-            "runs": 2,
-            "success": 1,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 477
-        },
-        {
-            "date": "2026-07-26 08:53:24",
-            "runs": 2,
-            "success": 1,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 229
-        },
-        {
-            "date": "2026-07-26 08:57:48",
-            "runs": 1,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 260
-        },
-        {
-            "date": "2026-07-26 09:41:55",
-            "runs": 10,
-            "success": 9,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 2632
-        },
-        {
-            "date": "2026-07-26 09:42:04",
-            "runs": 10,
-            "success": 9,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 2641
-        },
-        {
-            "date": "2026-07-26 11:36:37",
-            "runs": 5,
-            "success": 4,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 1117
-        },
-        {
-            "date": "2026-07-26 11:36:38",
-            "runs": 5,
-            "success": 4,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 1118
-        },
-        {
-            "date": "2026-07-26 12:15:55",
-            "runs": 10,
-            "success": 9,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 2335
-        },
-        {
-            "date": "2026-07-26 12:15:56",
-            "runs": 10,
-            "success": 9,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 2337
-        },
-        {
-            "date": "2026-07-26 14:31:15",
-            "runs": 23,
-            "success": 22,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 8030
-        },
-        {
-            "date": "2026-07-26 14:31:19",
-            "runs": 0,
-            "success": 0,
-            "watchdog_resets": 0,
-            "adb_disconnects": 0,
-            "duration_seconds": 1
-        },
         {
             "date": "2026-07-26 14:32:57",
             "runs": 1,
@@ -402,6 +146,272 @@
             "watchdog_resets": 0,
             "adb_disconnects": 0,
             "duration_seconds": 225
+        },
+        {
+            "date": "2026-07-26 22:28:32",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 464
+        },
+        {
+            "date": "2026-07-26 22:31:03",
+            "runs": 0,
+            "success": 0,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 4
+        },
+        {
+            "date": "2026-07-26 22:35:10",
+            "runs": 1,
+            "success": 0,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 21
+        },
+        {
+            "date": "2026-07-26 22:35:44",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 376
+        },
+        {
+            "date": "2026-07-26 22:59:20",
+            "runs": 6,
+            "success": 5,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 1404
+        },
+        {
+            "date": "2026-07-26 23:04:16",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 278
+        },
+        {
+            "date": "2026-07-26 23:04:17",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 279
+        },
+        {
+            "date": "2026-07-26 23:04:18",
+            "runs": 7,
+            "success": 6,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 1732
+        },
+        {
+            "date": "2026-07-26 23:04:20",
+            "runs": 7,
+            "success": 6,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 1734
+        },
+        {
+            "date": "2026-07-26 23:05:32",
+            "runs": 0,
+            "success": 0,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 5
+        },
+        {
+            "date": "2026-07-26 23:13:09",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 477
+        },
+        {
+            "date": "2026-07-26 23:13:10",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 448
+        },
+        {
+            "date": "2026-07-26 23:13:13",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 481
+        },
+        {
+            "date": "2026-07-26 23:13:15",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 452
+        },
+        {
+            "date": "2026-07-26 23:15:35",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 38
+        },
+        {
+            "date": "2026-07-26 23:21:03",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 366
+        },
+        {
+            "date": "2026-07-26 23:25:50",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 39
+        },
+        {
+            "date": "2026-07-26 23:26:11",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 60
+        },
+        {
+            "date": "2026-07-26 23:28:10",
+            "runs": 1,
+            "success": 0,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 33
+        },
+        {
+            "date": "2026-07-26 23:35:49",
+            "runs": 3,
+            "success": 2,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 547
+        },
+        {
+            "date": "2026-07-26 23:35:51",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 454
+        },
+        {
+            "date": "2026-07-26 23:35:53",
+            "runs": 2,
+            "success": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 456
+        },
+        {
+            "date": "2026-07-26 23:35:54",
+            "runs": 3,
+            "success": 2,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 552
+        },
+        {
+            "date": "2026-07-26 23:40:39",
+            "runs": 2,
+            "success": 1,
+            "boxes": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 254
+        },
+        {
+            "date": "2026-07-26 23:40:43",
+            "runs": 2,
+            "success": 1,
+            "boxes": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 258
+        },
+        {
+            "date": "2026-07-26 23:45:04",
+            "runs": 2,
+            "success": 1,
+            "boxes": 1,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 494
+        },
+        {
+            "date": "2026-07-27 12:01:59",
+            "runs": 33,
+            "success": 32,
+            "boxes": 40,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 43681
+        },
+        {
+            "date": "2026-07-27 12:02:15",
+            "runs": 157,
+            "success": 156,
+            "boxes": 186,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 43694
+        },
+        {
+            "date": "2026-07-27 12:02:37",
+            "runs": 1,
+            "success": 0,
+            "boxes": 187,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 16
+        },
+        {
+            "date": "2026-07-27 12:03:07",
+            "runs": 1,
+            "success": 0,
+            "boxes": 187,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 47
+        },
+        {
+            "date": "2026-07-27 12:06:11",
+            "runs": 2,
+            "success": 1,
+            "boxes": 42,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 241
+        },
+        {
+            "date": "2026-07-27 12:12:11",
+            "runs": 1,
+            "success": 0,
+            "boxes": 42,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 252
         }
-    ]
+    ],
+    "all_time_boxes": 687
 }

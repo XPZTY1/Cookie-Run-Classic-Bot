@@ -44,7 +44,7 @@ RANDOM_TAP_Y_RANGE = (0.15, 0.55)
 RANDOM_TAP_MAX_Y_PX = 400  # เพดานสูงสุดของแกน Y (px อ้างอิงจอ 1280x720) ห้ามสุ่มแตะต่ำกว่าระดับนี้
 
 
-# โมเดล Gemini ที่ใช้ (ฟรีเทียร์)
+# โมเดล Gemini ที่ใช้ (ฟรีเทียร์ เช่น gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash)
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # state เริ่มต้นทุกครั้งที่กด F6 (ใช้ร่วมกันระหว่าง bot_engine และ flows/flow_config)
@@ -119,9 +119,10 @@ SCHEDULE_CHECK_INTERVAL = 30      # ตรวจสอบตารางเว�
 # ---------------------------------------------------------------------------
 DISCORD_REPORT_ENABLED = True     # True = ส่งรายงาน Discord, False = ปิด
 DISCORD_REPORT_EVERY_N_RUNS = 10  # ส่งรายงานทุกกี่รอบที่เล่นสำเร็จ
+SELECTED_DISCORD_WEBHOOK = "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"  # โปรไฟล์ Webhook ที่เลือกใช้งานเฉพาะสำหรับอินสแตนซ์นี้
 
 # ---------------------------------------------------------------------------
 # ระบบ D: OCR Score Reading — อ่านคะแนน/เหรียญตอนจบเกมด้วย Gemini
 # ---------------------------------------------------------------------------
 OCR_SCORE_ENABLED = True          # True = เปิดอ่านคะแนน (ใช้ Gemini API), False = ปิด
-OCR_SCORE_DELAY = 1.5             # รอกี่วินาทีหลังจบเกมก่อนจับภาพเพื่ออ่านคะแนน
+OCR_SCORE_DELAY = 5            # รอกี่วินาทีหลังจบเกมก่อนจับภาพเพื่ออ่านคะแนน
