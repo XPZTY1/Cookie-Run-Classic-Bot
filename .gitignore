@@ -1,8 +1,16 @@
-__pycache__/
-*.pyc
+# --- ไฟล์ลับ / ข้อมูลส่วนตัว ---
 .env
 secrets.json
-bot_stats.json
 user_profiles.json
-pause_screenshots/
-*.log
+bot_stats.json
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Editor / OS junk ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
