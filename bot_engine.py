@@ -22,7 +22,6 @@ from config import (
     HOLD_CHANCE,
     WATCHDOG_TIMEOUT_SECONDS,
     ADB_MAX_RECONNECT_ATTEMPTS,
-    STATS_FILE_PATH,
     HEALTH_CHECK_WARNING_THRESHOLD,
     CLICK_JITTER_PIXELS,
     AUTO_REST_INTERVAL_MINUTES,
@@ -49,13 +48,39 @@ from config import (
     OCR_SCORE_DELAY,
 )
 from adb_client import adb_connect, adb_tap, adb_long_press, adb_swipe_curve, get_screen_size, grab_screen
-from template_matcher import find_template
 from notifiers.line_notifier import send_line_message
 from notifiers.gemini_vision import describe_image_with_gemini, read_game_score_with_gemini
 from notifiers.discord_notifier import send_discord_report, send_discord_embed, COLOR_SUCCESS, COLOR_WARNING, COLOR_INFO
 from flows.flow_config import FLOW
 from flows.interrupts_config import INTERRUPTS
 from flows.pause_events_config import PAUSE_EVENTS
+
+
+def find_template(screen, template_name, threshold=MATCH_THRESHOLD):
+    """
+    หาตำแหน่ง template บนหน้าจอ
+    คืนค่า (x, y, w, h) ของกึ่งกลางจุดที่เจอ หรือ None ถ้าไม่เจอ
+    """
+    if screen is None:
+        return None
+    template_path = os.path.join(config.TEMPLATE_DIR, template_name)
+    if not os.path.exists(template_path):
+        return None
+
+    template = cv2.imread(template_path)
+    if template is None:
+        return None
+
+    result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+    if max_val >= threshold:
+        h, w = template.shape[:2]
+        center_x = max_loc[0] + w // 2
+        center_y = max_loc[1] + h // 2
+        return (center_x, center_y, w, h)
+
+    return None
 
 # ---------------------------------------------------------------------------
 # state ของบอท (module-level, เหมือนตอนเป็นไฟล์เดียว)
@@ -249,7 +274,7 @@ def run_templates_health_check():
     print("\n🔍 กำลังสแกนตรวจสอบความพร้อมของภาพ Template ในโฟลเดอร์...")
     screen = grab_screen()
     if screen is None:
-        print("❌ ตรวจสอบไม่สำเร็จ: ไม่สามารถดึงหน้าจอ LDPlayer ได้ กรุณาเชื่อมต่อ ADB ก่อน")
+        print("❌ ตรวจสอบไม่สำเร็จ: ไม่สามารถดึงหน้าจอ MuMu Player ได้ กรุณาเชื่อมต่อ ADB ก่อน")
         return
         
     from config import TEMPLATE_DIR
@@ -923,6 +948,9 @@ def bot_loop():
                     # รีเซ็ตสถานะกลับไปเป็นค่าเริ่มต้น
                     current_state = INITIAL_STATE
                     state_start_time = time.time()
+                    paused_event_active = None
+                    login_recovery_active = False
+                    login_recovery_started_at = None
                     
                     # อัปเดตสถิติ
                     session_stats["watchdog_resets"] += 1
@@ -939,24 +967,23 @@ def bot_loop():
                 log_debug(f"[ADB Error] จับภาพหน้าจอไม่สำเร็จ ({adb_fail_count}/{ADB_MAX_RECONNECT_ATTEMPTS})")
                 
                 if adb_fail_count >= ADB_MAX_RECONNECT_ATTEMPTS:
-                    # [Bug fix] ส่ง LINE เฉพาะทุกๆ 60 วินาที ป้องกัน spam
+                    dev_id = getattr(config, "DEVICE_ID", "")
                     now = time.time()
                     if now - _last_reconnect_line_time > 60:
-                        msg = "🚨 [ADB Error] การเชื่อมต่อ LDPlayer ขัดข้องสะสม! กำลังพยายามบังคับ Reconnect ใหม่..."
-                        log_info("🔌 กำลัง Reconnect สัญญาณ ADB...")
+                        msg = f"🚨 [ADB Error] การเชื่อมต่อ MuMu Player ({dev_id}) ขัดข้องสะสม! กำลังพยายามบังคับ Reconnect ใหม่..."
+                        log_info(f"🔌 กำลัง Reconnect สัญญาณ ADB ({dev_id})...")
                         log_debug(msg)
                         send_line_message(msg)
                         _last_reconnect_line_time = now
                     else:
-                        log_debug("🚨 [ADB Error] ครบขีดจำกัด กำลัง Reconnect... (ไม่ส่ง LINE ซ้ำ)")
+                        log_debug(f"🚨 [ADB Error] ครบขีดจำกัด กำลัง Reconnect {dev_id}... (ไม่ส่ง LINE ซ้ำ)")
                     
-                    # พยายาม reconnect ใหม่ และรีเซ็ต adb_fail_count เสมอ
-                    # เพื่อไม่ให้ trigger reconnect ทุก loop ซ้ำโดยไม่มี backoff
-                    if adb_connect():
-                        log_info("🔌 เชื่อมต่อ LDPlayer สำเร็จ!")
+                    # พยายาม reconnect ใหม่กับ device_id ปัจจุบัน
+                    if adb_connect(dev_id):
+                        log_info(f"🔌 เชื่อมต่อ MuMu Player ({dev_id}) สำเร็จ!")
                         log_debug("✅ [ADB Reconnect] เชื่อมต่อสำเร็จแล้ว ทำงานต่อ...")
                     else:
-                        log_info("❌ เชื่อมต่อ LDPlayer ไม่สำเร็จ! รอ 2 วิเพื่อลองใหม่")
+                        log_info(f"❌ เชื่อมต่อ MuMu Player ({dev_id}) ไม่สำเร็จ! รอ 2 วิเพื่อลองใหม่")
                         log_debug("❌ [ADB Reconnect] เชื่อมต่อไม่สำเร็จ รอสักครู่แล้วจะลองใหม่")
                     
                     # อัปเดตสถิติ
@@ -1271,6 +1298,18 @@ def start_bot():
     global running, current_state, state_start_time, last_state_check
     global login_recovery_active, login_recovery_started_at, _interrupt_thread, _interrupt_thread_stop
     if not running:
+        dev_id = getattr(config, "DEVICE_ID", "").strip()
+        if not dev_id:
+            log_info("❌ ยังไม่ได้กรอกพอร์ต! กรุณากรอกพอร์ต (เช่น 5559) ในช่อง Device/Port แล้วกด Connect ก่อนเริ่มบอท")
+            return
+
+        screen_test = grab_screen()
+        if screen_test is None:
+            log_info(f"🔌 กำลังพยายามเชื่อมต่อ ADB ไปที่ {dev_id}...")
+            if not adb_connect(dev_id):
+                log_info(f"❌ เชื่อมต่อ ADB ไปที่ {dev_id} ไม่สำเร็จ กรุณาตรวจสอบว่าเปิด Emulator และพอร์ตถูกต้องแล้วกด Connect อีกครั้ง")
+                return
+
         running = True
         current_state = INITIAL_STATE
         state_start_time = time.time()

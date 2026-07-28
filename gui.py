@@ -12,7 +12,7 @@ from ttkbootstrap.constants import *
 
 import config
 import bot_engine
-from adb_client import adb_connect, grab_screen, find_mumu_ports
+from adb_client import adb_connect, grab_screen
 from secrets_loader import save_secret, ADB_DEVICE_ID, get_discord_webhooks, save_discord_webhooks
 from notifiers.line_notifier import send_line_message
 from notifiers.discord_notifier import send_discord_embed, COLOR_INFO, send_discord_report, send_discord_test_to_url
@@ -20,7 +20,7 @@ from notifiers.gemini_vision import describe_screen_with_gemini, read_game_score
 
 # path ของไอคอนแอป (วางไฟล์ icon.ico ไว้โฟลเดอร์ assets ข้างๆ ไฟล์นี้)
 ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
-PROFILES_FILE_PATH = os.path.join(config.BASE_DIR, "user_profiles.json")
+PROFILES_FILE_PATH = os.path.join(config.DATA_DIR, "user_profiles.json")
 
 
 def load_custom_profiles():
@@ -94,13 +94,9 @@ def force_taskbar_icon(root, icon_path):
 def run_gui():
     current_device = getattr(config, "DEVICE_ID", ADB_DEVICE_ID)
 
-    # ตรวจสอบการเชื่อมต่อ ADB เบื้องต้น
-    adb_connect(current_device)
-
     if sys.platform.startswith("win"):
         try:
-            dev_tag = current_device.replace(":", "_").replace(".", "_")
-            myappid = f"cookierunbot.gui.2.0.{dev_tag}"
+            myappid = "cookierunbot.gui.2.0"
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
             pass
@@ -109,7 +105,8 @@ def run_gui():
     # ttkbootstrap Window + Theme
     # ---------------------------------------------------------------------------
     root = ttk.Window(themename="darkly")
-    root.title(f"Cookie Run Classic Auto Bot [{current_device}] — Modern Dashboard v2.0")
+    title_suffix = f" [{current_device}]" if current_device else ""
+    root.title(f"Cookie Run Classic Auto Bot{title_suffix} — Modern Dashboard v2.0")
     root.geometry("860x780")
     root.minsize(800, 700)
     root.resizable(True, True)
@@ -150,86 +147,43 @@ def run_gui():
         bootstyle="danger"
     ).pack(side=tk.LEFT, padx=(2, 0), pady=(4, 0))
 
-    # ADB Connection Bar (ขวา)
+    # ADB Connection Bar (ขวา - กรอกพอร์ตด้วยตนเอง)
     adb_frame = ttk.Frame(header_frame)
     adb_frame.pack(side=tk.RIGHT)
 
     ttk.Label(adb_frame, text="📱 Device/Port:", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 5))
 
-    preset_map = {
-        "MuMu (5559)": "127.0.0.1:5559",
-        "MuMu (7555)": "127.0.0.1:7555",
-        "LDPlayer (5555)": "127.0.0.1:5555",
-        "Nox (62001)": "127.0.0.1:62001",
-        "BlueStacks": "127.0.0.1:5555"
-    }
+    adb_entry_var = tk.StringVar(value=current_device if current_device else "")
 
-    adb_entry_var = tk.StringVar(value=current_device)
-
-    adb_entry = ttk.Entry(adb_frame, textvariable=adb_entry_var, width=16, font=("Consolas", 9))
+    adb_entry = ttk.Entry(adb_frame, textvariable=adb_entry_var, width=18, font=("Consolas", 9))
     adb_entry.pack(side=tk.LEFT, padx=3)
-
-    def on_preset_select(event=None):
-        sel = preset_combo.get()
-        if sel in preset_map:
-            adb_entry_var.set(preset_map[sel])
-
-    preset_combo = ttk.Combobox(
-        adb_frame,
-        values=list(preset_map.keys()),
-        width=14,
-        state="readonly",
-        font=("Segoe UI", 8)
-    )
-    preset_combo.set("เลือกพอร์ต")
-    preset_combo.pack(side=tk.LEFT, padx=3)
-    preset_combo.bind("<<ComboboxSelected>>", on_preset_select)
 
     def connect_adb_action():
         target = adb_entry_var.get().strip()
         if not target:
-            bot_engine.log_info("❌ กรุณากรอก Device IP:Port ก่อนกดเชื่อมต่อ")
+            bot_engine.log_info("❌ กรุณากรอก Device IP:Port ก่อนกดเชื่อมต่อ (เช่น 5559 หรือ 127.0.0.1:5559)")
             return
 
+        if ":" not in target:
+            target = f"127.0.0.1:{target}"
+
+        adb_entry_var.set(target)
         bot_engine.log_info(f"🔌 กำลังพยายามเชื่อมต่อ ADB ไปที่ {target}...")
         success = adb_connect(target)
         if success:
             config.DEVICE_ID = target
             root.title(f"Cookie Run Classic Auto Bot [{target}] — Modern Dashboard v2.0")
-            bot_engine.log_info(f"✅ เชื่อมต่อพอร์ต {target} เรียบร้อยแล้ว (อัปเดตชื่อหน้าต่างแล้ว)")
+            bot_engine.log_info(f"✅ สลับการเชื่อมต่อมาที่พอร์ต {target} เรียบร้อยแล้ว!")
         else:
-            bot_engine.log_info(f"❌ เชื่อมต่อ {target} ไม่สำเร็จ ตรวจสอบการเปิด Emulator")
+            bot_engine.log_info(f"❌ เชื่อมต่อ {target} ไม่สำเร็จ ตรวจสอบว่าเปิด Emulator และพอร์ตถูกต้องหรือไม่")
 
-    def scan_mumu_action():
-        bot_engine.log_info("🔍 กำลังค้นหาพอร์ต MuMu Player อัตโนมัติ...")
-        found = find_mumu_ports()
-        if found:
-            for p in found:
-                port_num = p.split(":")[-1]
-                label = f"MuMu Auto ({port_num})"
-                preset_map[label] = p
-            preset_combo.configure(values=list(preset_map.keys()))
-            adb_entry_var.set(found[0])
-            first_port_num = found[0].split(":")[-1]
-            preset_combo.set(f"MuMu Auto ({first_port_num})")
-            bot_engine.log_info(f"✅ ค้นพบพอร์ต MuMu Player ({len(found)} จอ): {', '.join(found)}")
-        else:
-            bot_engine.log_info("⚠️ ไม่พบพอร์ต MuMu Player ที่กำลังเปิดอยู่ (โปรดตรวจสอบว่าเปิด MuMu Player อยู่หรือไม่)")
-
-    scan_btn = ttk.Button(
-        adb_frame,
-        text="🔄 หาพอร์ต MuMu",
-        bootstyle="warning-outline",
-        width=14,
-        command=scan_mumu_action
-    )
-    scan_btn.pack(side=tk.LEFT, padx=3)
+    adb_entry.bind("<Return>", lambda event: connect_adb_action())
 
     conn_btn = ttk.Button(
         adb_frame,
         text="🔌 Connect",
         bootstyle="info-outline",
-        width=10,
+        width=12,
         command=connect_adb_action
     )
     conn_btn.pack(side=tk.LEFT, padx=(3, 0))
@@ -244,12 +198,21 @@ def run_gui():
     btn_card = ttk.Labelframe(dash_frame, text="🎮  CONTROL", bootstyle="info", padding=12)
     btn_card.pack(side=tk.LEFT, fill=tk.Y)
 
+    def on_start_bot_click():
+        target = adb_entry_var.get().strip()
+        if target:
+            if ":" not in target and not target.startswith("emulator-"):
+                target = f"127.0.0.1:{target}"
+            config.DEVICE_ID = target
+            adb_entry_var.set(target)
+        bot_engine.start_bot()
+
     start_btn = ttk.Button(
         btn_card,
         text="▶  START BOT (F6)",
         bootstyle="success",
         width=18,
-        command=bot_engine.start_bot
+        command=on_start_bot_click
     )
     start_btn.pack(pady=4, ipady=5)
 
@@ -778,11 +741,11 @@ def run_gui():
     log_area.pack(fill=tk.BOTH, expand=True)
 
     def write_to_log_area(formatted_msg):
-        raw_logs.append(formatted_msg)
-        if len(raw_logs) > 500:
-            raw_logs.pop(0)
-
         def update_ui():
+            raw_logs.append(formatted_msg)
+            if len(raw_logs) > 500:
+                raw_logs.pop(0)
+
             mode = filter_var.get()
             if mode == "[INFO] ทั่วไป" and "[DEBUG]" in formatted_msg:
                 return

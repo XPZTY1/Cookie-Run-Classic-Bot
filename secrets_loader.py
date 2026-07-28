@@ -27,7 +27,10 @@ def load_legacy_secrets():
         return {}
     try:
         with open(secrets_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            content = f.read().strip()
+            if not content:
+                return {}
+            return json.loads(content)
     except Exception as e:
         print(f"!! อ่านไฟล์ secrets.json ไม่สำเร็จ: {e}")
         return {}
@@ -77,7 +80,7 @@ GEMINI_API_KEY = (
     or _legacy.get("gemini_api_key", "")
 )
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL") or _legacy.get("discord_webhook_url", "")
-ADB_DEVICE_ID = os.environ.get("ADB_DEVICE_ID") or _legacy.get("adb_device_id", "127.0.0.1:5559")
+ADB_DEVICE_ID = os.environ.get("ADB_DEVICE_ID") or _legacy.get("adb_device_id", "")
 ADB_PATH = os.environ.get("ADB_PATH") or _legacy.get("adb_path", "")
 
 

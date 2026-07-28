@@ -19,8 +19,10 @@ def adb_run(args, timeout=10):
     args: list ของ argument ต่อจาก 'adb -s <device>' เช่น ["shell", "input", "tap", "500", "800"]
     คืนค่า CompletedProcess (มี .stdout เป็น bytes)
     """
+    # อ่าน ADB_PATH และ DEVICE_ID จาก config ทุกครั้ง เพื่อให้ตอบสนองการเปลี่ยนค่า Multi-Instance
+    adb_path = getattr(config, "ADB_PATH", ADB_PATH)
     device_id = getattr(config, "DEVICE_ID", DEVICE_ID)
-    cmd = [ADB_PATH, "-s", device_id] + args
+    cmd = [adb_path, "-s", device_id] + args
     try:
         result = subprocess.run(
             cmd,
@@ -33,49 +35,103 @@ def adb_run(args, timeout=10):
         print(f"[ADB] คำสั่งหมดเวลา: {' '.join(args)}")
         return None
     except FileNotFoundError:
-        print(f"[ADB] ไม่พบไฟล์ adb.exe ที่ path: {ADB_PATH}")
+        print(f"[ADB] ไม่พบไฟล์ adb.exe ที่ path: {adb_path}")
         return None
 
 
 def adb_connect(target_device=None):
-    """เชื่อมต่อ ADB กับ Emulator ตาม target_device หรือ config.DEVICE_ID"""
+    """
+    เชื่อมต่อ ADB กับ Emulator ตาม target_device หรือ config.DEVICE_ID
+    รองรับทั้งพอร์ต 5555, 5559, 7555, 16384 และ serial 'emulator-5554'
+    """
     global _screen_size_cache
     _screen_size_cache = None
 
     if target_device:
-        config.DEVICE_ID = target_device
+        target_device = str(target_device).strip()
+        if target_device:
+            if ":" not in target_device and not target_device.startswith("emulator-"):
+                target_device = f"127.0.0.1:{target_device}"
+            config.DEVICE_ID = target_device
 
-    device_id = getattr(config, "DEVICE_ID", DEVICE_ID)
+    device_id = getattr(config, "DEVICE_ID", "").strip()
+    if not device_id:
+        print("[ADB] ❌ ยังไม่ได้ระบุพอร์ต/Device IP:Port กรุณากรอกพอร์ตก่อนกดเชื่อมต่อ")
+        return False
 
+    if ":" not in device_id and not device_id.startswith("emulator-"):
+        device_id = f"127.0.0.1:{device_id}"
+        config.DEVICE_ID = device_id
+    adb_path = getattr(config, "ADB_PATH", ADB_PATH)
+
+    # 1. เริ่ม ADB Server
     try:
-        subprocess.run([ADB_PATH, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+        subprocess.run([adb_path, "start-server"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
     except Exception:
         pass
 
-    # พยายามเรียก adb connect <device_id> ก่อน
+    # 2. พยายามเรียก adb connect <device_id>
     try:
-        subprocess.run([ADB_PATH, "connect", device_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
+        subprocess.run([adb_path, "connect", device_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
     except Exception:
         pass
 
-    result = subprocess.run([ADB_PATH, "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+    # พิเศษ: หากผู้ใช้พิมพ์พอร์ต 5555 หรือ 5554 ให้ลอง connect ทั้ง 127.0.0.1:5555 และ 127.0.0.1:5554
+    if "5555" in device_id or "5554" in device_id:
+        try:
+            subprocess.run([adb_path, "connect", "127.0.0.1:5555"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+            subprocess.run([adb_path, "connect", "127.0.0.1:5554"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+        except Exception:
+            pass
+
+    # 3. เช็ครายการอุปกรณ์ใน adb devices
+    result = subprocess.run([adb_path, "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
     output = result.stdout.decode(errors="ignore")
     print("[ADB] อุปกรณ์ที่เจอ:")
     print(output)
 
-    if device_id not in output:
-        print(f"!! ไม่พบ device '{device_id}' ใน `adb devices`")
-        print("!! ตรวจสอบว่าเปิด Emulator และพอร์ตถูกต้องแล้ว:", ADB_PATH)
-        return False
-    print(f"✅ เชื่อมต่อ ADB สำเร็จ: {device_id}")
-    return True
+    # 4. ตรวจหาความสอดคล้อง (Smart Device Identifier Matching)
+    # Windows ADB มักแสดงพอร์ต 5555 ในชื่อ 'emulator-5554' หรือ '127.0.0.1:5555'
+    matched_device = None
+    if device_id in output:
+        matched_device = device_id
+    elif "5555" in device_id or "5554" in device_id:
+        if "emulator-5554" in output:
+            matched_device = "emulator-5554"
+        elif "127.0.0.1:5555" in output:
+            matched_device = "127.0.0.1:5555"
+
+    if matched_device:
+        config.DEVICE_ID = matched_device
+        print(f"✅ เชื่อมต่อ ADB สำเร็จ: {matched_device}")
+        return True
+
+    # 5. Fallback Check: ทดสอบสแกนจับภาพหน้าจอจริง หากได้ภาพแสดงว่าพอร์ตเชื่อมต่อได้จริง
+    scr = grab_screen()
+    if scr is not None:
+        print(f"✅ เชื่อมต่อ ADB สำเร็จ (ยืนยันผ่านการจับภาพหน้าจอ): {device_id}")
+        return True
+
+    # 6. หากมี Emulator ติดอยู่อย่างน้อย 1 ตัว ให้สลับไปใช้อุปกรณ์ตัวแรกที่ออนไลน์
+    lines = [line.strip() for line in output.splitlines() if line.strip() and not line.startswith("List of")]
+    active_devs = [l.split()[0] for l in lines if "device" in l and "offline" not in l]
+    if active_devs:
+        fallback_dev = active_devs[0]
+        config.DEVICE_ID = fallback_dev
+        if grab_screen() is not None:
+            print(f"✅ สลับไปใช้อุปกรณ์ที่พบบน ADB อัตโนมัติ: {fallback_dev}")
+            return True
+
+    print(f"!! ไม่พบ device '{device_id}' ใน `adb devices` (ผลลัพธ์: {output.strip()})")
+    print("!! ตรวจสอบว่าเปิด Emulator และเปิดตั้งค่า ADB Debugging ในจำลองหรือยัง:", adb_path)
+    return False
 
 
 _screen_size_cache = None
 
 
 def get_screen_size():
-    """ดึงขนาดหน้าจอจริงของ LDPlayer ผ่าน adb shell wm size"""
+    """ดึงขนาดหน้าจอจริงของ LDPlayer/MuMu ผ่าน adb shell wm size"""
     global _screen_size_cache
     if _screen_size_cache:
         return _screen_size_cache
@@ -98,7 +154,7 @@ def get_screen_size():
 
 def grab_screen():
     """
-    จับภาพหน้าจอของ LDPlayer ผ่าน adb exec-out screencap
+    จับภาพหน้าจอของ Emulator ผ่าน adb exec-out screencap
     คืนค่าเป็น numpy array (BGR สำหรับ OpenCV) หรือ None ถ้าจับไม่สำเร็จ
     """
     result = adb_run(["exec-out", "screencap", "-p"], timeout=10)
@@ -111,7 +167,7 @@ def grab_screen():
 
 
 def adb_tap(x, y):
-    """สั่งแตะจอ LDPlayer ที่พิกัด (x, y) ผ่าน adb shell input tap"""
+    """สั่งแตะจอ Emulator ที่พิกัด (x, y) ผ่าน adb shell input tap"""
     adb_run(["shell", "input", "tap", str(int(x)), str(int(y))], timeout=5)
 
 
@@ -135,13 +191,10 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
     """
     import random
     import math
-    import time
 
-    # คำนวณจุดกึ่งกลาง (Midpoint)
     mx = (x1 + x2) / 2.0
     my = (y1 + y2) / 2.0
 
-    # คำนวณ Vector ตั้งฉาก (Perpendicular Vector)
     dx = x2 - x1
     dy = y2 - y1
     dist = math.hypot(dx, dy)
@@ -150,17 +203,14 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
         adb_tap(x1, y1)
         return
 
-    # Normal vector ตั้งฉาก สุ่มทิศทาง (+1 หรือ -1)
     side = random.choice([-1, 1])
     offset = random.uniform(curve_strength * 0.5, curve_strength)
     nx = -dy / dist * offset * side
     ny = dx / dist * offset * side
 
-    # Control Point (P1) สำหรับ Quadratic Bezier
     cx = mx + nx
     cy = my + ny
 
-    # สร้างจุดบนเส้นโค้ง Bezier B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
     points = []
     for i in range(steps + 1):
         t = i / float(steps)
@@ -169,7 +219,6 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
         py = (one_minus_t ** 2) * y1 + 2 * one_minus_t * t * cy + (t ** 2) * y2
         points.append((int(px), int(py)))
 
-    # ลากนิ้วตามช่วงจุดย่อยๆ โดยรวมคำสั่งส่งให้ adb shell รันลวดเดียวเพื่อลด overhead ของ subprocess
     step_duration = max(10, int(duration_ms / max(1, steps)))
     swipe_cmds = []
     for i in range(len(points) - 1):
@@ -177,43 +226,6 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
         p_end = points[i + 1]
         swipe_cmds.append(f"input swipe {p_start[0]} {p_start[1]} {p_end[0]} {p_end[1]} {step_duration}")
 
-    # เชื่อมต่อคำสั่งด้วย && เพื่อรันต่อเนื่องใน adb shell
     full_cmd = " && ".join(swipe_cmds)
     adb_run(["shell", full_cmd], timeout=5)
-
-
-def find_mumu_ports():
-    """
-    ค้นหาพอร์ต ADB ของ MuMu Player ที่กำลังเปิดอยู่อัตโนมัติ
-    รองรับทั้ง MuMu Player 6, MuMu Player 9 และ MuMu Player 12 (Multi-instance)
-    """
-    import socket
-
-    # พอร์ตมาตรฐานยอดนิยมของ MuMu Player (5559, 7555 และ 16384+N*32 สำหรับ MuMu 12)
-    candidate_ports = [5559, 7555, 5555] + [16384 + i * 32 for i in range(16)]
-    active_ports = []
-
-    for port in candidate_ports:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.15)
-            res = s.connect_ex(("127.0.0.1", port))
-            s.close()
-            if res == 0:
-                dev = f"127.0.0.1:{port}"
-                if dev not in active_ports:
-                    active_ports.append(dev)
-        except Exception:
-            pass
-
-    # พยายามเรียก adb connect สั้นๆ กับพอร์ตที่พบ เพื่อลงทะเบียนกับ ADB server
-    connected_ports = []
-    for dev in active_ports:
-        try:
-            subprocess.run([ADB_PATH, "connect", dev], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
-            connected_ports.append(dev)
-        except Exception:
-            pass
-
-    return connected_ports if connected_ports else active_ports
 

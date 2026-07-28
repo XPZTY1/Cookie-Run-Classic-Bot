@@ -227,10 +227,9 @@ def read_game_score_with_gemini(screen):
             score = 0
             coins = 0
             boxes = 0
-            # หาแพทเทิร์น "score": 1234 หรือ "coins": 5678 หรือ "boxes": 2
-            score_match = re.search(r'"score"\s*:\s*"?([\d,\.]+)"?', res_text, re.IGNORECASE)
-            coins_match = re.search(r'"coins"\s*:\s*"?([\d,\.]+)"?', res_text, re.IGNORECASE)
-            boxes_match = re.search(r'"boxes"\s*:\s*"?([\d,\.]+)"?', res_text, re.IGNORECASE)
+            score_match = re.search(r'(?:"score"|คะแนน)\s*[:=]\s*"?([\d,\.]+)"?', res_text, re.IGNORECASE)
+            coins_match = re.search(r'(?:"coins"|เหรียญ)\s*[:=]\s*"?([\d,\.]+)"?', res_text, re.IGNORECASE)
+            boxes_match = re.search(r'(?:"boxes"|กล่อง)\s*[:=]\s*"?([\d,\.]+)"?', res_text, re.IGNORECASE)
 
             if score_match:
                 score = _parse_int_safe(score_match.group(1))

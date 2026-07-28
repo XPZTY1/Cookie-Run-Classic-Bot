@@ -25,7 +25,7 @@ from bot_engine import bot_loop, start_bot, stop_bot, quit_program
 
 
 def main():
-    # ตรวจสอบพารามิเตอร์ --port หรือ --device บน Command Line ก่อนเริ่มการเชื่อมต่อ ADB
+    # ตรวจสอบพารามิเตอร์ --port หรือ --device บน Command Line
     target_device = None
     if "--port" in sys.argv:
         idx = sys.argv.index("--port")
@@ -39,11 +39,15 @@ def main():
 
     if target_device:
         config.DEVICE_ID = target_device
-        print(f"[Multi-Instance] ระบุ Device/Port จาก Command Line: {target_device}")
+        print(f"[Device] ระบุ Device/Port จาก Command Line: {target_device}")
 
-    if not adb_connect(target_device):
-        print("!! ไม่สามารถเชื่อมต่อ Emulator ผ่าน ADB ได้ กรุณาตรวจสอบก่อนใช้งานต่อ")
-        return
+    # หากรันโหมดพิเศษที่ไม่ใช่ GUI (เช่น --capture, --debug, --no-gui) ให้ลองเชื่อมต่อ ADB ก่อน
+    is_cli_mode = any(arg in sys.argv for arg in ["--capture", "--debug", "--test-line", "--test-discord", "--test-gemini", "--no-gui"])
+    if is_cli_mode or target_device:
+        if not adb_connect(target_device):
+            print("!! ไม่สามารถเชื่อมต่อ Emulator ผ่าน ADB ได้ กรุณาตรวจสอบพอร์ตก่อนใช้งานต่อ")
+            if is_cli_mode:
+                return
 
     if "--capture" in sys.argv:
         capture_mode()

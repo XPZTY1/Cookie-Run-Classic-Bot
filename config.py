@@ -51,9 +51,10 @@ def find_adb_path():
 ADB_PATH = find_adb_path()
 
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
-PAUSE_SCREENSHOT_DIR = os.path.join(BASE_DIR, "pause_screenshots")  # โฟลเดอร์เก็บภาพตอนหยุดทำงาน
+DATA_DIR = os.path.join(BASE_DIR, "data")  # โฟลเดอร์เก็บข้อมูล stats/profiles/screenshots
+PAUSE_SCREENSHOT_DIR = os.path.join(DATA_DIR, "pause_screenshots")  # โฟลเดอร์เก็บภาพตอนหยุดทำงาน
 
-MATCH_THRESHOLD = 0.8         # ความมั่นใจขั้นต่ำ (0-1) ที่จะถือว่า "เจอ" ปุ่ม/ภาพ
+MATCH_THRESHOLD = 0.70         # ความมั่นใจขั้นต่ำ (0-1) ที่จะถือว่า "เจอ" ปุ่ม/ภาพ
 TAP_DELAY_RANGE = (0.3, 0.6)  # หน่วงเวลาสุ่มระหว่างแต่ละครั้งที่แตะ ใน tap_loop ขณะวิ่งเกม (วินาที)
 RANDOM_TAP_DELAY_RANGE = (0.03, 0.15)  # หน่วงเวลาสุ่มระหว่างการสุ่มแตะขณะรอ over_game (วินาที)
 HOLD_DURATION_RANGE = (150, 300)     # ระยะเวลากดค้างแบบสุ่ม (มิลลิวินาที) เพื่อเลียนแบบมนุษย์
@@ -82,12 +83,12 @@ ADB_MAX_RECONNECT_ATTEMPTS = 5   # จำนวนครั้งสูงสุ
 # ตั้งค่าระบบสถิติและตรวจสอบ (Phase 2)
 # ---------------------------------------------------------------------------
 def get_stats_file_path():
-    """ดึง path ของไฟล์สถิติ แยกตาม Device/Port เพื่อไม่ให้รันหลายโปรแกรมแล้วสถิติตีกัน"""
-    dev = getattr(sys.modules.get("config"), "DEVICE_ID", DEVICE_ID)
+    """ดึง path ของไฟล์สถิติ แยกตาม Device/Port เพื่อไม่ให้รันหลายโปรแกรมแล้วสถิติตีกันได้"""
+    # อ่านจาก module globals() เลย เพื่อให้ได้ค่าล่าสุดเสมอ แม้ external code จะทำ config.DEVICE_ID = อะไรก็ตาม
+    dev = globals().get("DEVICE_ID", "127.0.0.1:5559")
     dev_clean = dev.replace(":", "_").replace(".", "_")
-    return os.path.join(BASE_DIR, f"bot_stats_{dev_clean}.json")
+    return os.path.join(DATA_DIR, f"bot_stats_{dev_clean}.json")
 
-STATS_FILE_PATH = os.path.join(BASE_DIR, "bot_stats.json")
 HEALTH_CHECK_WARNING_THRESHOLD = 0.50 # แจ้งเตือนในตอนเริ่มรันบอทหาก score ของ template ต่ำกว่า 50%
 
 # ---------------------------------------------------------------------------
@@ -116,11 +117,11 @@ BOOST_TAP_SPEED_MS = 50             # ความรัวกด Fast Start Boo
 # ตั้งค่าระบบ Fast Start Boost (กดรัวทันทีตอนเริ่มวิ่ง + สแกนหาภาพ)
 # ---------------------------------------------------------------------------
 FAST_START_ENTRY_BURST = True               # True = กดรัวทันทีเมื่อเริ่มวิ่ง (แก้ปัญหา ADB สแกนภาพช้าไม่ทันเกม)
-FAST_START_BOOST_X = 652                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
-FAST_START_BOOST_Y = 345                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
+FAST_START_BOOST_X = 650                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
+FAST_START_BOOST_Y = 340                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
 
-FAST_START_BOOST_TEMPLATE = "fast1_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
-FAST_START_BOOST_TAPS = 20                   # จำนวนครั้งที่กดรัว
+FAST_START_BOOST_TEMPLATE = "fast_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
+FAST_START_BOOST_TAPS = 25                   # จำนวนครั้งที่กดรัว
 FAST_START_BOOST_THRESHOLD = 0.65           # ความแม่นยำขั้นต่ำในการสแกนหาภาพ (0.0-1.0)
 
 # ---------------------------------------------------------------------------

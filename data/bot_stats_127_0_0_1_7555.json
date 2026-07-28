@@ -1,0 +1,17 @@
+{
+    "all_time_runs": 0,
+    "all_time_success": 0,
+    "all_time_watchdog_resets": 0,
+    "all_time_boxes": 0,
+    "history": [
+        {
+            "date": "2026-07-28 16:20:06",
+            "runs": 0,
+            "success": 0,
+            "boxes": 0,
+            "watchdog_resets": 0,
+            "adb_disconnects": 0,
+            "duration_seconds": 8
+        }
+    ]
+}
