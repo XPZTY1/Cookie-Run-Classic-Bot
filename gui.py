@@ -335,8 +335,14 @@ def run_gui():
         bot_engine.log_info(f"⚙️ อ่านคะแนน Gemini OCR = {'เปิด' if config.OCR_SCORE_ENABLED else 'ปิด'}")
     ttk.Checkbutton(settings_card, text="🔍 อ่านคะแนน OCR", variable=ocr_score_var, command=on_ocr_score_toggle, bootstyle="success-round-toggle").grid(row=1, column=3, sticky=tk.W, padx=4, pady=4)
 
+    random_tap_var = tk.BooleanVar(value=getattr(config, "ENABLE_RANDOM_TAP_WHILE_WAIT", True))
+    def on_random_tap_toggle():
+        config.ENABLE_RANDOM_TAP_WHILE_WAIT = random_tap_var.get()
+        bot_engine.log_info(f"⚙️ สุ่มกดหน้าจอขณะรอ (over_game) = {'เปิด' if config.ENABLE_RANDOM_TAP_WHILE_WAIT else 'ปิด'}")
+    ttk.Checkbutton(settings_card, text="🎲 สุ่มกดขณะรอ", variable=random_tap_var, command=on_random_tap_toggle, bootstyle="warning-round-toggle").grid(row=2, column=0, sticky=tk.W, padx=4, pady=4)
+
     # Speed & Preset Profile Selector
-    ttk.Label(settings_card, text="🚀 ความรัวการกด:", font=("Segoe UI", 9)).grid(row=2, column=0, sticky=tk.W, padx=4, pady=(6, 0))
+    ttk.Label(settings_card, text="🚀 ความรัวการกด:", font=("Segoe UI", 9)).grid(row=3, column=0, sticky=tk.W, padx=4, pady=(6, 0))
     speed_map = {"100ms (ปกติ)": 100, "50ms (รัวเร็ว)": 50, "30ms (รัวมาก)": 30}
     speed_var = tk.StringVar(value="50ms (รัวเร็ว)")
 
@@ -347,11 +353,11 @@ def run_gui():
         bot_engine.log_info(f"⚙️ ความรัวการกด = {selected} ({speed_ms}ms)")
 
     speed_menu = ttk.Combobox(settings_card, textvariable=speed_var, values=list(speed_map.keys()), state="readonly", bootstyle="success", width=16)
-    speed_menu.grid(row=2, column=1, sticky=tk.W, padx=4, pady=(6, 0))
+    speed_menu.grid(row=3, column=1, sticky=tk.W, padx=4, pady=(6, 0))
     speed_menu.bind("<<ComboboxSelected>>", on_speed_change)
 
     # Preset Profiles System (100% Custom User Profiles)
-    ttk.Label(settings_card, text="📋 โปรไฟล์ Preset:", font=("Segoe UI", 9, "bold"), bootstyle="info").grid(row=2, column=2, sticky=tk.W, padx=4, pady=(6, 0))
+    ttk.Label(settings_card, text="📋 โปรไฟล์ Preset:", font=("Segoe UI", 9, "bold"), bootstyle="info").grid(row=3, column=2, sticky=tk.W, padx=4, pady=(6, 0))
 
     custom_profiles = load_custom_profiles()
 
@@ -388,18 +394,21 @@ def run_gui():
         ocr_score_var.set(p.get("ocr_score", True))
         on_ocr_score_toggle()
 
+        random_tap_var.set(p.get("random_tap", True))
+        on_random_tap_toggle()
+
         speed_var.set(p.get("speed", "50ms (รัวเร็ว)"))
         on_speed_change()
 
         bot_engine.log_info(f"📋 โหลดและใช้โปรไฟล์เซ็ตติ้ง: {name} เรียบร้อย!")
 
     profile_menu = ttk.Combobox(settings_card, textvariable=profile_var, values=list(custom_profiles.keys()), state="readonly", bootstyle="info", width=22)
-    profile_menu.grid(row=2, column=3, sticky=tk.W, padx=4, pady=(6, 0))
+    profile_menu.grid(row=3, column=3, sticky=tk.W, padx=4, pady=(6, 0))
     profile_menu.bind("<<ComboboxSelected>>", on_profile_change)
 
     # ปุ่มจัดการ Custom Preset (Save / Delete)
     profile_btn_frame = ttk.Frame(settings_card)
-    profile_btn_frame.grid(row=3, column=2, columnspan=2, sticky=tk.E, padx=4, pady=(6, 0))
+    profile_btn_frame.grid(row=4, column=2, columnspan=2, sticky=tk.E, padx=4, pady=(6, 0))
 
     def save_custom_profile_action():
         from tkinter import simpledialog
@@ -420,6 +429,7 @@ def run_gui():
             "schedule": schedule_var.get(),
             "discord": discord_var.get(),
             "ocr_score": ocr_score_var.get(),
+            "random_tap": random_tap_var.get(),
             "speed": speed_var.get()
         }
 

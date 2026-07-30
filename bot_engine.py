@@ -1246,11 +1246,39 @@ def bot_loop():
             else:
                 log_debug(f"[{current_state}] ยังไม่เจอ {template_name}... กำลังสแกนหา")
                 if tap_while_wait:
-                    log_debug(f"[{current_state}] สุ่มกดปุ่มกระโดดต่อเนื่อง...")
-                    # ส่ง guard_templates เพื่อหยุดกดรัวทันทีที่เจอ game_over.png บนจอ
-                    # ป้องกันการเผลอไปกดปุ่ม OK ที่หน้าจบเกมก่อนที่บอทจะ detect ได้
-                    guard_tpls = step.get("guard_templates", None)
-                    do_random_tap_loop(delay, guard_templates=guard_tpls, state=current_state)
+                    if getattr(config, "ENABLE_RANDOM_TAP_WHILE_WAIT", True):
+                        log_debug(f"[{current_state}] สุ่มกดปุ่มกระโดดต่อเนื่อง...")
+                        # ส่ง guard_templates เพื่อหยุดกดรัวทันทีที่เจอ game_over.png บนจอ
+                        # ป้องกันการเผลอไปกดปุ่ม OK ที่หน้าจบเกมก่อนที่บอทจะ detect ได้
+                        guard_tpls = step.get("guard_templates", None)
+                        do_random_tap_loop(delay, guard_templates=guard_tpls, state=current_state)
+                    else:
+                        # ระบบสุ่มกดถูกปิด: รอด้วย polling loop เหมือน state ทั่วไป
+                        log_debug(f"[{current_state}] ENABLE_RANDOM_TAP_WHILE_WAIT=False -> รอเฉยๆ (ไม่กดสุ่ม)")
+                        start_wait = time.time()
+                        waited = 0.0
+                        poll_interval = 0.15
+                        while waited < delay:
+                            if not running:
+                                break
+                            try:
+                                screen_during_wait = grab_screen()
+                                if screen_during_wait is not None and INTERRUPTS:
+                                    intr_handled = check_interrupts(screen_during_wait)
+                                    if intr_handled:
+                                        intr_cfg = INTERRUPTS.get(intr_handled, {})
+                                        intr_delay = intr_cfg.get("cooldown", 1.0)
+                                        log_info(f"⏳ หลังจัดการ interrupt '{intr_handled}' จะรอ {intr_delay} วินาที ตามคอนฟิก")
+                                        wait_until_intr = time.time() + float(intr_delay)
+                                        while time.time() < wait_until_intr:
+                                            if not running:
+                                                break
+                                            time.sleep(0.1)
+                                        break
+                            except Exception:
+                                pass
+                            time.sleep(poll_interval)
+                            waited = time.time() - start_wait
                 else:
                     # ถ้า state นี้ไม่มี tap_while_wait ให้รอแบบ poll หา interrupts แทนการ sleep ปกติ
                     start_wait = time.time()
