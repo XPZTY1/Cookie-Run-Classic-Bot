@@ -1,0 +1,32 @@
+{
+  "127_0_0_1_5559": {
+    "nickname": "127.0.0.1:5559",
+    "device_id": "127.0.0.1:5559",
+    "settings": {
+      "ENABLE_BOOSTER_BUY": true,
+      "ENABLE_FAST_START_BOOST": false,
+      "ENABLE_USE_SECOND_COOKIE": true,
+      "ENABLE_LINE_NOTIFY": false,
+      "ENABLE_RANDOM_TAP_WHILE_WAIT": false,
+      "DISCORD_REPORT_ENABLED": true,
+      "OCR_SCORE_ENABLED": true,
+      "SCHEDULE_ENABLED": false,
+      "SELECTED_DISCORD_WEBHOOK": "Tae"
+    }
+  },
+  "127_0_0_1_5561": {
+    "nickname": "127.0.0.1:5561",
+    "device_id": "127.0.0.1:5561",
+    "settings": {
+      "ENABLE_BOOSTER_BUY": true,
+      "ENABLE_FAST_START_BOOST": false,
+      "ENABLE_USE_SECOND_COOKIE": true,
+      "ENABLE_LINE_NOTIFY": false,
+      "ENABLE_RANDOM_TAP_WHILE_WAIT": true,
+      "DISCORD_REPORT_ENABLED": true,
+      "OCR_SCORE_ENABLED": true,
+      "SCHEDULE_ENABLED": false,
+      "SELECTED_DISCORD_WEBHOOK": "Mook"
+    }
+  }
+}

@@ -13,16 +13,15 @@ from config import ADB_PATH, DEVICE_ID
 import config
 
 
-def adb_run(args, timeout=10):
+def adb_run(args, timeout=10, device_id=None):
     """
-    รันคำสั่ง adb กับ device ที่กำหนดใน config.DEVICE_ID
+    รันคำสั่ง adb กับ device ที่กำหนดใน device_id หรือ config.DEVICE_ID
     args: list ของ argument ต่อจาก 'adb -s <device>' เช่น ["shell", "input", "tap", "500", "800"]
     คืนค่า CompletedProcess (มี .stdout เป็น bytes)
     """
-    # อ่าน ADB_PATH และ DEVICE_ID จาก config ทุกครั้ง เพื่อให้ตอบสนองการเปลี่ยนค่า Multi-Instance
     adb_path = getattr(config, "ADB_PATH", ADB_PATH)
-    device_id = getattr(config, "DEVICE_ID", DEVICE_ID)
-    cmd = [adb_path, "-s", device_id] + args
+    target_device = device_id or getattr(config, "DEVICE_ID", DEVICE_ID)
+    cmd = [adb_path, "-s", target_device] + args
     try:
         result = subprocess.run(
             cmd,
@@ -45,7 +44,7 @@ def adb_connect(target_device=None):
     รองรับทั้งพอร์ต 5555, 5559, 7555, 16384 และ serial 'emulator-5554'
     """
     global _screen_size_cache
-    _screen_size_cache = None
+    _screen_size_cache.clear()
 
     if target_device:
         target_device = str(target_device).strip()
@@ -54,7 +53,7 @@ def adb_connect(target_device=None):
                 target_device = f"127.0.0.1:{target_device}"
             config.DEVICE_ID = target_device
 
-    device_id = getattr(config, "DEVICE_ID", "").strip()
+    device_id = (target_device or getattr(config, "DEVICE_ID", "")).strip()
     if not device_id:
         print("[ADB] ❌ ยังไม่ได้ระบุพอร์ต/Device IP:Port กรุณากรอกพอร์ตก่อนกดเชื่อมต่อ")
         return False
@@ -70,11 +69,19 @@ def adb_connect(target_device=None):
     except Exception:
         pass
 
-    # 2. พยายามเรียก adb connect <device_id>
+    # 2. Disconnect แล้ว Connect ใหม่สด เพื่อล้าง offline state
+    try:
+        subprocess.run([adb_path, "disconnect", device_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+    except Exception:
+        pass
+
     try:
         subprocess.run([adb_path, "connect", device_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
     except Exception:
         pass
+
+    import time as _t
+    _t.sleep(0.5)
 
     # พิเศษ: หากผู้ใช้พิมพ์พอร์ต 5555 หรือ 5554 ให้ลอง connect ทั้ง 127.0.0.1:5555 และ 127.0.0.1:5554
     if "5555" in device_id or "5554" in device_id:
@@ -91,11 +98,16 @@ def adb_connect(target_device=None):
     print(output)
 
     # 4. ตรวจหาความสอดคล้อง (Smart Device Identifier Matching)
-    # Windows ADB มักแสดงพอร์ต 5555 ในชื่อ 'emulator-5554' หรือ '127.0.0.1:5555'
     matched_device = None
-    if device_id in output:
-        matched_device = device_id
-    elif "5555" in device_id or "5554" in device_id:
+    for line in output.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[1] == "device":
+            dev = parts[0]
+            if dev == device_id or device_id in dev:
+                matched_device = dev
+                break
+
+    if not matched_device and ("5555" in device_id or "5554" in device_id):
         if "emulator-5554" in output:
             matched_device = "emulator-5554"
         elif "127.0.0.1:5555" in output:
@@ -106,72 +118,89 @@ def adb_connect(target_device=None):
         print(f"✅ เชื่อมต่อ ADB สำเร็จ: {matched_device}")
         return True
 
-    # 5. Fallback Check: ทดสอบสแกนจับภาพหน้าจอจริง หากได้ภาพแสดงว่าพอร์ตเชื่อมต่อได้จริง
-    scr = grab_screen()
+    # 5. Fallback: ทดสอบจับภาพหน้าจอจริง
+    scr = grab_screen(device_id=device_id)
     if scr is not None:
         print(f"✅ เชื่อมต่อ ADB สำเร็จ (ยืนยันผ่านการจับภาพหน้าจอ): {device_id}")
         return True
-
-    # 6. หากมี Emulator ติดอยู่อย่างน้อย 1 ตัว ให้สลับไปใช้อุปกรณ์ตัวแรกที่ออนไลน์
-    lines = [line.strip() for line in output.splitlines() if line.strip() and not line.startswith("List of")]
-    active_devs = [l.split()[0] for l in lines if "device" in l and "offline" not in l]
-    if active_devs:
-        fallback_dev = active_devs[0]
-        config.DEVICE_ID = fallback_dev
-        if grab_screen() is not None:
-            print(f"✅ สลับไปใช้อุปกรณ์ที่พบบน ADB อัตโนมัติ: {fallback_dev}")
-            return True
 
     print(f"!! ไม่พบ device '{device_id}' ใน `adb devices` (ผลลัพธ์: {output.strip()})")
     print("!! ตรวจสอบว่าเปิด Emulator และเปิดตั้งค่า ADB Debugging ในจำลองหรือยัง:", adb_path)
     return False
 
 
-_screen_size_cache = None
+_screen_size_cache = {}
 
 
-def get_screen_size():
-    """ดึงขนาดหน้าจอจริงของ LDPlayer/MuMu ผ่าน adb shell wm size"""
+def get_screen_size(device_id=None):
+    """ดึงขนาดหน้าจอจริงของ LDPlayer/MuMu ผ่าน adb shell wm size (แยกตามพอร์ต)"""
     global _screen_size_cache
-    if _screen_size_cache:
-        return _screen_size_cache
+    target = device_id or getattr(config, "DEVICE_ID", "")
+    if target in _screen_size_cache:
+        return _screen_size_cache[target]
 
-    result = adb_run(["shell", "wm", "size"])
+    result = adb_run(["shell", "wm", "size"], device_id=target)
     if result is None or result.returncode != 0:
-        _screen_size_cache = (960, 540)
-        return _screen_size_cache
+        _screen_size_cache[target] = (1280, 720)
+        return _screen_size_cache[target]
 
     output = result.stdout.decode(errors="ignore")
     try:
         size_str = output.strip().split(":")[-1].strip()
         w, h = size_str.split("x")
-        _screen_size_cache = (int(w), int(h))
+        _screen_size_cache[target] = (int(w), int(h))
     except Exception:
-        _screen_size_cache = (960, 540)
+        _screen_size_cache[target] = (1280, 720)
 
-    return _screen_size_cache
+    return _screen_size_cache[target]
 
 
-def grab_screen():
+def grab_screen(device_id=None):
     """
     จับภาพหน้าจอของ Emulator ผ่าน adb exec-out screencap
+    รองรับกรณีที่ MuMu Player ใส่ Warning text มาก่อน PNG header (เช่น multi-display)
+    และรองรับการ auto-reconnect เมื่อ device offline
     คืนค่าเป็น numpy array (BGR สำหรับ OpenCV) หรือ None ถ้าจับไม่สำเร็จ
     """
-    result = adb_run(["exec-out", "screencap", "-p"], timeout=10)
-    if result is None or not result.stdout:
-        return None
+    import subprocess as _sp
+    import time as _t
 
-    img_array = np.frombuffer(result.stdout, dtype=np.uint8)
+    target = device_id or getattr(config, "DEVICE_ID", "")
+    adb_path = getattr(config, "ADB_PATH", ADB_PATH)
+
+    result = adb_run(["exec-out", "screencap", "-p"], timeout=10, device_id=target)
+
+    # ถ้า device offline ให้ reconnect แล้วลองใหม่
+    if result is None or not result.stdout or result.returncode != 0:
+        try:
+            _sp.run([adb_path, "connect", target], stdout=_sp.PIPE, stderr=_sp.PIPE, timeout=8)
+            _t.sleep(0.5)
+        except Exception:
+            pass
+        result = adb_run(["exec-out", "screencap", "-p"], timeout=10, device_id=target)
+        if result is None or not result.stdout:
+            return None
+
+    data = result.stdout
+
+    # ค้นหา PNG Header (\x89PNG) และตัดข้อความ Warning ที่อาจติดมาก่อนหน้าออก
+    idx = data.find(b"\x89PNG")
+    if idx == -1:
+        return None
+    if idx > 0:
+        data = data[idx:]
+
+    img_array = np.frombuffer(data, dtype=np.uint8)
     screen = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
     return screen
 
 
-def adb_tap(x, y):
+def adb_tap(x, y, device_id=None):
     """สั่งแตะจอ Emulator ที่พิกัด (x, y) ผ่าน adb shell input tap"""
-    adb_run(["shell", "input", "tap", str(int(x)), str(int(y))], timeout=5)
+    adb_run(["shell", "input", "tap", str(int(x)), str(int(y))], timeout=5, device_id=device_id)
 
 
-def adb_long_press(x, y, duration_ms=150):
+def adb_long_press(x, y, duration_ms=150, device_id=None):
     """
     สั่งกดค้างที่พิกัด (x, y) เป็นเวลา duration_ms มิลลิวินาที
     ใช้ adb shell input swipe จากจุดเดิมไปจุดเดิม พร้อม duration
@@ -181,10 +210,11 @@ def adb_long_press(x, y, duration_ms=150):
     adb_run(
         ["shell", "input", "swipe", xi, yi, xi, yi, str(int(duration_ms))],
         timeout=5,
+        device_id=device_id,
     )
 
 
-def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180):
+def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180, device_id=None):
     """
     ลากนิ้วจาก (x1, y1) ไปยัง (x2, y2) แบบเส้นโค้ง Bezier (Quadratic Bezier Curve)
     เพื่อเลียนแบบวิถีการลากนิ้วของมนุษย์จริงบนหน้าจอสัมผัส
@@ -200,7 +230,7 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
     dist = math.hypot(dx, dy)
 
     if dist < 1.0:
-        adb_tap(x1, y1)
+        adb_tap(x1, y1, device_id=device_id)
         return
 
     side = random.choice([-1, 1])
@@ -227,5 +257,6 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180)
         swipe_cmds.append(f"input swipe {p_start[0]} {p_start[1]} {p_end[0]} {p_end[1]} {step_duration}")
 
     full_cmd = " && ".join(swipe_cmds)
-    adb_run(["shell", full_cmd], timeout=5)
+    adb_run(["shell", full_cmd], timeout=5, device_id=device_id)
+
 

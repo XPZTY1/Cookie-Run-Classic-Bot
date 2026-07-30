@@ -1,24 +1,28 @@
 import os
 import sys
-import time
 import json
 import ctypes
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox, simpledialog
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
 import config
-import bot_engine
-from adb_client import adb_connect, grab_screen
-from secrets_loader import save_secret, ADB_DEVICE_ID, get_discord_webhooks, save_discord_webhooks
+from bot_engine import BotInstance
+from adb_client import adb_connect
+from secrets_loader import (
+    save_secret, ADB_DEVICE_ID,
+    get_discord_webhooks, save_discord_webhooks,
+    LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID, GEMINI_API_KEY
+)
 from notifiers.line_notifier import send_line_message
-from notifiers.discord_notifier import send_discord_embed, COLOR_INFO, send_discord_report, send_discord_test_to_url
-from notifiers.gemini_vision import describe_screen_with_gemini, read_game_score_with_gemini
+from notifiers.discord_notifier import send_discord_test_to_url
 
-# path ของไอคอนแอป (วางไฟล์ icon.ico ไว้โฟลเดอร์ assets ข้างๆ ไฟล์นี้)
+# ---------------------------------------------------------------------------
+# Constants & Helpers
+# ---------------------------------------------------------------------------
 ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
 PROFILES_FILE_PATH = os.path.join(config.DATA_DIR, "user_profiles.json")
 
@@ -44,790 +48,889 @@ def save_custom_profiles_to_disk(profiles_dict):
 
 
 def force_taskbar_icon(root, icon_path):
-    """
-    แก้บั๊กที่ root.iconbitmap() เซ็ตไอคอน title bar ได้
-    แต่ taskbar ยังโชว์ไอคอน python.exe เดิมอยู่ (เฉพาะ Windows)
-    """
     if not sys.platform.startswith("win"):
         return
     try:
         user32 = ctypes.windll.user32
         user32.GetParent.argtypes = [ctypes.c_void_p]
         user32.GetParent.restype = ctypes.c_void_p
-
         user32.LoadImageW.argtypes = [
             ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_uint,
             ctypes.c_int, ctypes.c_int, ctypes.c_uint
         ]
         user32.LoadImageW.restype = ctypes.c_void_p
-
         user32.SendMessageW.argtypes = [
             ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p
         ]
         user32.SendMessageW.restype = ctypes.c_void_p
 
         WM_SETICON = 0x0080
-        ICON_SMALL = 0
-        ICON_BIG = 1
-        IMAGE_ICON = 1
-        LR_LOADFROMFILE = 0x00000010
-        LR_DEFAULTSIZE = 0x00000040
+        ICON_SMALL, ICON_BIG, IMAGE_ICON = 0, 1, 1
+        LR_LOADFROMFILE, LR_DEFAULTSIZE = 0x00000010, 0x00000040
 
         root.update()
         hwnd = user32.GetParent(root.winfo_id())
-
-        h_icon_big = user32.LoadImageW(
-            None, icon_path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE
-        )
-        h_icon_small = user32.LoadImageW(
-            None, icon_path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE
-        )
-
-        if h_icon_big:
-            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_icon_big)
-        if h_icon_small:
-            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_icon_small)
+        h_big = user32.LoadImageW(None, icon_path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE)
+        h_sm = user32.LoadImageW(None, icon_path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+        if h_big:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_big)
+        if h_sm:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_sm)
     except Exception as e:
         print(f"⚠️ ตั้งไอคอน taskbar ไม่สำเร็จ: {e}")
 
 
-def run_gui():
-    current_device = getattr(config, "DEVICE_ID", ADB_DEVICE_ID)
+# ---------------------------------------------------------------------------
+# Main Application
+# ---------------------------------------------------------------------------
+class CookieBotGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🍪 Cookie Run Classic Auto Bot — Multi-Instance Manager")
+        self.root.geometry("1050x800")
+        self.root.minsize(900, 700)
+        self.root.resizable(True, True)
 
-    if sys.platform.startswith("win"):
         try:
-            myappid = "cookierunbot.gui.2.0"
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            self.root.iconbitmap(ICON_PATH)
+        except Exception:
+            pass
+        force_taskbar_icon(self.root, ICON_PATH)
+
+        # State
+        self.instances = {}        # device_id -> BotInstance
+        self.saved_ports = config.load_saved_ports()
+        self.pages = {}            # page_key -> Frame
+
+        self._build_layout()
+        self._load_existing_ports()
+        self.show_page("home")
+        self._update_loop()
+
+    # ------------------------------------------------------------------
+    # Layout
+    # ------------------------------------------------------------------
+    def _build_layout(self):
+        # Top header (always visible)
+        hdr = ttk.Frame(self.root, padding=(12, 8, 12, 6), bootstyle="dark")
+        hdr.pack(fill=tk.X, side=tk.TOP)
+
+        title_box = ttk.Frame(hdr)
+        title_box.pack(side=tk.LEFT)
+        ttk.Label(title_box, text="🍪 COOKIE RUN BOT", font=("Segoe UI", 15, "bold"),
+                  bootstyle="warning").pack(side=tk.LEFT)
+        ttk.Label(title_box, text=" PRO", font=("Segoe UI", 10, "bold"),
+                  bootstyle="danger").pack(side=tk.LEFT, padx=(2, 0), pady=(4, 0))
+
+        btn_box = ttk.Frame(hdr)
+        btn_box.pack(side=tk.RIGHT)
+        ttk.Button(btn_box, text="⚡ Start All", bootstyle="success",
+                   command=self._start_all).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_box, text="⛔ Stop All", bootstyle="danger",
+                   command=self._stop_all).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_box, text="⚙️ ตั้งค่า", bootstyle="info-outline",
+                   command=self._open_settings).pack(side=tk.LEFT, padx=4)
+
+        # Page container
+        self.container = ttk.Frame(self.root)
+        self.container.pack(fill=tk.BOTH, expand=True)
+        self.container.rowconfigure(0, weight=1)
+        self.container.columnconfigure(0, weight=1)
+
+        # Build HOME page
+        home = HomePage(self.container, self)
+        home.grid(row=0, column=0, sticky="nsew")
+        self.pages["home"] = home
+
+    def _load_existing_ports(self):
+        for key, pdata in self.saved_ports.items():
+            self._create_port_page(pdata)
+
+    def _update_loop(self):
+        for p in self.pages.values():
+            if hasattr(p, "update_stats"):
+                try:
+                    p.update_stats()
+                except Exception:
+                    pass
+        self.root.after(1000, self._update_loop)
+
+    # ------------------------------------------------------------------
+    # Page Navigation
+    # ------------------------------------------------------------------
+    def get_port_key(self, device_id):
+        return device_id.replace(":", "_").replace(".", "_")
+
+    def show_page(self, page_key):
+        page = self.pages.get(page_key)
+        if page:
+            page.tkraise()
+            if page_key == "home":
+                self.pages["home"].refresh()
+
+    def _create_port_page(self, pdata):
+        dev_id = pdata.get("device_id")
+        if not dev_id:
+            return
+        key = self.get_port_key(dev_id)
+        if key not in self.pages:
+            page = PortWorkspacePage(self.container, self, pdata)
+            page.grid(row=0, column=0, sticky="nsew")
+            self.pages[key] = page
+
+    # ------------------------------------------------------------------
+    # Add / Remove Port
+    # ------------------------------------------------------------------
+    def add_port(self, raw_port, nickname=""):
+        device_id = raw_port.strip()
+        if not device_id:
+            messagebox.showwarning("คำเตือน", "กรุณากรอกพอร์ตหรือ Device ID ก่อน")
+            return False
+
+        if ":" not in device_id and not device_id.startswith("emulator-"):
+            device_id = f"127.0.0.1:{device_id}"
+
+        key = self.get_port_key(device_id)
+        if key in self.saved_ports:
+            messagebox.showinfo("แจ้งเตือน", f"พอร์ต {device_id} มีอยู่แล้วในระบบ")
+            self.show_page(key)
+            return True
+
+        # Test connection
+        ok = adb_connect(device_id)
+        if not ok:
+            res = messagebox.askyesno(
+                "เชื่อมต่อไม่สำเร็จ",
+                f"เชื่อมต่อ ADB ไปที่ {device_id} ไม่สำเร็จ\n"
+                "ตรวจสอบว่าเปิด MuMu Player แล้วหรือยัง\n\n"
+                "ต้องการบันทึกพอร์ตนี้ไว้ก่อนหรือไม่?"
+            )
+            if not res:
+                return False
+
+        pdata = {"nickname": nickname or device_id, "device_id": device_id}
+        self.saved_ports[key] = pdata
+        config.save_saved_ports(self.saved_ports)
+        self._create_port_page(pdata)
+        self.show_page(key)
+        return True
+
+    def remove_port(self, device_id):
+        if not messagebox.askyesno("ยืนยันการลบ", f"ลบพอร์ต {device_id} ออกจากระบบหรือไม่?"):
+            return
+        key = self.get_port_key(device_id)
+        if key in self.saved_ports:
+            del self.saved_ports[key]
+            config.save_saved_ports(self.saved_ports)
+
+        inst = self.instances.get(device_id)
+        if inst:
+            try:
+                inst.stop_bot()
+            except Exception:
+                pass
+            del self.instances[device_id]
+
+        if key in self.pages:
+            self.pages[key].destroy()
+            del self.pages[key]
+
+        self.show_page("home")
+
+    # ------------------------------------------------------------------
+    # Master Controls
+    # ------------------------------------------------------------------
+    def _start_all(self):
+        for key, page in self.pages.items():
+            if key != "home" and hasattr(page, "start_bot_action"):
+                page.start_bot_action()
+
+    def _stop_all(self):
+        for dev_id, inst in self.instances.items():
+            try:
+                if inst.running:
+                    inst.stop_bot()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Settings Window
+    # ------------------------------------------------------------------
+    def _open_settings(self):
+        SettingsWindow(self.root)
+
+
+# ---------------------------------------------------------------------------
+# HOME PAGE
+# ---------------------------------------------------------------------------
+class HomePage(ttk.Frame):
+    def __init__(self, parent, app):
+        super().__init__(parent)
+        self.app = app
+        self._content = None
+        self.refresh()
+
+    def refresh(self):
+        if self._content:
+            self._content.destroy()
+        self._content = ttk.Frame(self, padding=20)
+        self._content.pack(fill=tk.BOTH, expand=True)
+
+        if not self.app.saved_ports:
+            self._build_welcome()
+        else:
+            self._build_grid()
+
+    def update_stats(self):
+        pass  # Home page refreshes on show; stats live on port pages
+
+    # -- Welcome (first run) --
+    def _build_welcome(self):
+        wrap = ttk.Frame(self._content)
+        wrap.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+        ttk.Label(wrap, text="🍪", font=("Segoe UI", 48)).pack(pady=(0, 10))
+        ttk.Label(wrap, text="ยินดีต้อนรับสู่ Cookie Run Auto Bot!",
+                  font=("Segoe UI", 20, "bold"), bootstyle="warning").pack()
+        ttk.Label(wrap, text="เพิ่มพอร์ต ADB ของ MuMu Player เพื่อเริ่มต้นใช้งาน",
+                  font=("Segoe UI", 11), bootstyle="secondary").pack(pady=(4, 30))
+
+        row = ttk.Frame(wrap)
+        row.pack()
+        ttk.Label(row, text="Device/Port:", font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        self._entry_welcome = ttk.Entry(row, width=22, font=("Consolas", 11))
+        self._entry_welcome.pack(side=tk.LEFT, padx=5)
+        self._entry_welcome.bind("<Return>", lambda e: self._on_add_welcome())
+
+        ttk.Button(wrap, text="➕ เพิ่มพอร์ตและเริ่มใช้งาน", bootstyle="primary",
+                   command=self._on_add_welcome).pack(pady=18, ipady=6, ipadx=12)
+
+        ttk.Label(wrap, text="ตัวอย่าง: 7555  หรือ  16384  หรือ  127.0.0.1:5559",
+                  font=("Segoe UI", 9), bootstyle="secondary").pack()
+
+    def _on_add_welcome(self):
+        port = self._entry_welcome.get().strip()
+        if port:
+            self.app.add_port(port)
+
+    # -- Port cards grid --
+    def _build_grid(self):
+        ttk.Label(self._content, text="📱 พอร์ตจำลองของคุณ",
+                  font=("Segoe UI", 17, "bold"), bootstyle="info").pack(anchor=tk.W, pady=(0, 16))
+
+        grid = ttk.Frame(self._content)
+        grid.pack(fill=tk.BOTH, expand=True)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        col, row = 0, 0
+        for key, pdata in self.app.saved_ports.items():
+            self._build_card(grid, pdata, row, col)
+            col += 1
+            if col > 1:
+                col = 0
+                row += 1
+
+        # Add-port card
+        add_card = ttk.Labelframe(grid, text="➕ เพิ่มพอร์ตใหม่", bootstyle="info", padding=15)
+        add_card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+        ttk.Label(add_card, text="Port/Device (เช่น 7555, 16384):",
+                  font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(0, 4))
+        entry = ttk.Entry(add_card, font=("Consolas", 10))
+        entry.pack(fill=tk.X, pady=4)
+
+        nick_row = ttk.Frame(add_card)
+        nick_row.pack(fill=tk.X, pady=4)
+        ttk.Label(nick_row, text="ชื่อกำกับ (ไม่บังคับ):", font=("Segoe UI", 9)).pack(anchor=tk.W)
+        nick_entry = ttk.Entry(nick_row, font=("Segoe UI", 10))
+        nick_entry.pack(fill=tk.X)
+
+        ttk.Button(add_card, text="💾 บันทึกและเชื่อมต่อ", bootstyle="success",
+                   command=lambda: self.app.add_port(
+                       entry.get(), nick_entry.get()
+                   )).pack(pady=10, fill=tk.X)
+
+    def _build_card(self, parent, pdata, row, col):
+        dev_id = pdata["device_id"]
+        nick = pdata.get("nickname", dev_id)
+
+        inst = self.app.instances.get(dev_id)
+        is_running = getattr(inst, "running", False) if inst else False
+
+        card = ttk.Labelframe(parent, text=nick, bootstyle="secondary", padding=14)
+        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+        # Status
+        status_txt = "🟢 RUNNING" if is_running else "🔴 STOPPED"
+        status_style = "success" if is_running else "danger"
+        ttk.Label(card, text=status_txt, bootstyle=status_style,
+                  font=("Segoe UI", 10, "bold")).pack(anchor=tk.W, pady=(0, 4))
+
+        # Device ID
+        ttk.Label(card, text=dev_id, font=("Consolas", 9),
+                  bootstyle="secondary").pack(anchor=tk.W, pady=(0, 6))
+
+        # Stats
+        stats = "รอบสำเร็จ: 0 | อัตรา: 0%"
+        if inst and hasattr(inst, "session_stats"):
+            s = inst.session_stats
+            tr = s.get("total_runs", 0)
+            sr = round((s.get("successful_runs", 0) / tr) * 100, 1) if tr > 0 else 0
+            stats = f"รอบสำเร็จ: {s.get('successful_runs', 0)} / {tr} | อัตรา: {sr}%"
+        ttk.Label(card, text=stats, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(0, 10))
+
+        # Buttons
+        btn_row = ttk.Frame(card)
+        btn_row.pack(fill=tk.X)
+        key = self.app.get_port_key(dev_id)
+        ttk.Button(btn_row, text="▶ รัน", bootstyle="success-outline", width=8,
+                   command=lambda d=dev_id: self._quick_start(d)).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row, text="■ หยุด", bootstyle="danger-outline", width=8,
+                   command=lambda d=dev_id: self._quick_stop(d)).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row, text="⚙️ เข้าสู่หน้าควบคุม", bootstyle="info",
+                   command=lambda k=key: self.app.show_page(k)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_row, text="🗑️", bootstyle="danger",
+                   command=lambda d=dev_id: self.app.remove_port(d)).pack(side=tk.RIGHT)
+
+    def _quick_start(self, dev_id):
+        key = self.app.get_port_key(dev_id)
+        if key in self.app.pages:
+            self.app.pages[key].start_bot_action()
+        self.refresh()
+
+    def _quick_stop(self, dev_id):
+        inst = self.app.instances.get(dev_id)
+        if inst:
+            try:
+                inst.stop_bot()
+            except Exception:
+                pass
+        self.refresh()
+
+
+# ---------------------------------------------------------------------------
+# PORT WORKSPACE PAGE
+# ---------------------------------------------------------------------------
+class PortWorkspacePage(ttk.Frame):
+    def __init__(self, parent, app, pdata):
+        super().__init__(parent)
+        self.app = app
+        self.device_id = pdata["device_id"]
+        self.nickname = pdata.get("nickname", self.device_id)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        content = ttk.Frame(self, padding=(20, 15, 20, 15))
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # Header
+        hdr = ttk.Frame(content)
+        hdr.pack(fill=tk.X, pady=(0, 12))
+
+        ttk.Button(hdr, text="← กลับหน้าหลัก", bootstyle="secondary-outline",
+                   command=lambda: self.app.show_page("home")).pack(side=tk.LEFT)
+        ttk.Label(hdr, text=f"  📱 {self.nickname}",
+                  font=("Segoe UI", 15, "bold"), bootstyle="info").pack(side=tk.LEFT)
+        self._status_lbl = ttk.Label(hdr, text="🔴 STOPPED",
+                                     font=("Segoe UI", 11, "bold"), bootstyle="danger")
+        self._status_lbl.pack(side=tk.RIGHT)
+
+        # ADB port row
+        adb_row = ttk.Frame(content)
+        adb_row.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(adb_row, text="📡 Device:", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        ttk.Label(adb_row, text=self.device_id, font=("Consolas", 9),
+                  bootstyle="secondary").pack(side=tk.LEFT, padx=6)
+
+        # Control buttons
+        ctrl = ttk.Frame(content)
+        ctrl.pack(fill=tk.X, pady=6)
+        ttk.Button(ctrl, text="▶  START BOT", bootstyle="success", width=16,
+                   command=self.start_bot_action).pack(side=tk.LEFT, padx=4, ipady=4)
+        ttk.Button(ctrl, text="■  STOP BOT", bootstyle="danger-outline", width=16,
+                   command=self.stop_bot_action).pack(side=tk.LEFT, padx=4, ipady=4)
+        ttk.Button(ctrl, text="⚙️ ตั้งค่าพอร์ทนี้", bootstyle="info-outline", width=16,
+                   command=self._open_port_settings).pack(side=tk.LEFT, padx=4, ipady=4)
+        ttk.Button(ctrl, text="🗑️ ลบพอร์ตนี้", bootstyle="danger",
+                   command=lambda: self.app.remove_port(self.device_id)).pack(side=tk.RIGHT, padx=4)
+
+        # Stats Overview
+        stats_frame = ttk.Labelframe(content, text="📊 สถิติการทำงานแบบ Real-time", bootstyle="primary", padding=12)
+        stats_frame.pack(fill=tk.X, pady=10)
+
+        r1 = ttk.Frame(stats_frame)
+        r1.pack(fill=tk.X, pady=3)
+        self._lbl_state = ttk.Label(r1, text="State: -", font=("Segoe UI", 9, "bold"), bootstyle="warning", width=22)
+        self._lbl_state.pack(side=tk.LEFT, padx=5)
+        self._lbl_runs = ttk.Label(r1, text="Total Runs: 0", font=("Segoe UI", 9), width=22)
+        self._lbl_runs.pack(side=tk.LEFT, padx=5)
+        self._lbl_success = ttk.Label(r1, text="Success: 0", font=("Segoe UI", 9), width=22)
+        self._lbl_success.pack(side=tk.LEFT, padx=5)
+        self._lbl_rate = ttk.Label(r1, text="Rate: 0.0%", font=("Segoe UI", 9), width=22)
+        self._lbl_rate.pack(side=tk.LEFT, padx=5)
+
+        r2 = ttk.Frame(stats_frame)
+        r2.pack(fill=tk.X, pady=3)
+        self._lbl_coins = ttk.Label(r2, text="🪙 Coins/Hr: 0", font=("Segoe UI", 9), width=22)
+        self._lbl_coins.pack(side=tk.LEFT, padx=5)
+        self._lbl_boxes = ttk.Label(r2, text="🎁 Boxes: 0", font=("Segoe UI", 9), width=22)
+        self._lbl_boxes.pack(side=tk.LEFT, padx=5)
+        self._lbl_score = ttk.Label(r2, text="🏆 Last Score: 0", font=("Segoe UI", 9), width=22)
+        self._lbl_score.pack(side=tk.LEFT, padx=5)
+        self._lbl_rest = ttk.Label(r2, text="Next Rest: --:--", font=("Segoe UI", 9), width=22)
+        self._lbl_rest.pack(side=tk.LEFT, padx=5)
+
+        # Log Section
+        log_hdr = ttk.Frame(content)
+        log_hdr.pack(fill=tk.X, pady=(10, 4))
+        ttk.Label(log_hdr, text="📜 บันทึกการทำงาน (Log)", font=("Segoe UI", 11, "bold"), bootstyle="secondary").pack(side=tk.LEFT)
+        ttk.Button(log_hdr, text="🧹 ล้าง Log", bootstyle="secondary-outline", command=self._clear_log).pack(side=tk.RIGHT)
+
+        self._log_box = scrolledtext.ScrolledText(
+            content, height=16, bg="#0f172a", fg="#38bdf8",
+            font=("Consolas", 10), state="disabled"
+        )
+        self._log_box.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+
+    def _open_port_settings(self):
+        PortSettingsDialog(self, self.app, self.device_id)
+
+    # ------------------------------------------------------------------
+    def _clear_log(self):
+        self._log_box.configure(state="normal")
+        self._log_box.delete("1.0", tk.END)
+        self._log_box.configure(state="disabled")
+
+    def append_log(self, msg):
+        def _do():
+            try:
+                self._log_box.configure(state="normal")
+                self._log_box.insert(tk.END, msg + "\n")
+                self._log_box.see(tk.END)
+                self._log_box.configure(state="disabled")
+            except Exception:
+                pass
+        try:
+            self.after(0, _do)
         except Exception:
             pass
 
-    # ---------------------------------------------------------------------------
-    # ttkbootstrap Window + Theme
-    # ---------------------------------------------------------------------------
-    root = ttk.Window(themename="darkly")
-    title_suffix = f" [{current_device}]" if current_device else ""
-    root.title(f"Cookie Run Classic Auto Bot{title_suffix} — Modern Dashboard v2.0")
-    root.geometry("860x780")
-    root.minsize(800, 700)
-    root.resizable(True, True)
+    # ------------------------------------------------------------------
+    def start_bot_action(self):
+        key = self.app.get_port_key(self.device_id)
+        pdata = self.app.saved_ports.get(key, {})
+        port_settings = config.get_port_settings(pdata)
 
-    try:
-        root.iconbitmap(ICON_PATH)
-    except Exception:
-        pass
-
-    force_taskbar_icon(root, ICON_PATH)
-
-    LOG_BG = "#0f172a"
-    LOG_FG = "#38bdf8"
-
-    # เก็บประวัติ Log ทั้งหมดสำหรับระบบ Filter
-    raw_logs = []
-
-    # ---------------------------------------------------------------------------
-    # 1. Layout ด้านบน: Header Bar & ADB Config Toolbar
-    # ---------------------------------------------------------------------------
-    header_frame = ttk.Frame(root, padding=(15, 12, 15, 8))
-    header_frame.pack(fill=tk.X)
-
-    title_box = ttk.Frame(header_frame)
-    title_box.pack(side=tk.LEFT)
-
-    ttk.Label(
-        title_box,
-        text="🍪 COOKIE RUN BOT",
-        font=("Segoe UI", 16, "bold"),
-        bootstyle="warning"
-    ).pack(side=tk.LEFT)
-
-    ttk.Label(
-        title_box,
-        text=" PRO",
-        font=("Segoe UI", 10, "bold"),
-        bootstyle="danger"
-    ).pack(side=tk.LEFT, padx=(2, 0), pady=(4, 0))
-
-    # ADB Connection Bar (ขวา - กรอกพอร์ตด้วยตนเอง)
-    adb_frame = ttk.Frame(header_frame)
-    adb_frame.pack(side=tk.RIGHT)
-
-    ttk.Label(adb_frame, text="📱 Device/Port:", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 5))
-
-    adb_entry_var = tk.StringVar(value=current_device if current_device else "")
-
-    adb_entry = ttk.Entry(adb_frame, textvariable=adb_entry_var, width=18, font=("Consolas", 9))
-    adb_entry.pack(side=tk.LEFT, padx=3)
-
-    def connect_adb_action():
-        target = adb_entry_var.get().strip()
-        if not target:
-            bot_engine.log_info("❌ กรุณากรอก Device IP:Port ก่อนกดเชื่อมต่อ (เช่น 5559 หรือ 127.0.0.1:5559)")
-            return
-
-        if ":" not in target:
-            target = f"127.0.0.1:{target}"
-
-        adb_entry_var.set(target)
-        bot_engine.log_info(f"🔌 กำลังพยายามเชื่อมต่อ ADB ไปที่ {target}...")
-        success = adb_connect(target)
-        if success:
-            config.DEVICE_ID = target
-            root.title(f"Cookie Run Classic Auto Bot [{target}] — Modern Dashboard v2.0")
-            bot_engine.log_info(f"✅ สลับการเชื่อมต่อมาที่พอร์ต {target} เรียบร้อยแล้ว!")
+        if self.device_id not in self.app.instances:
+            self.app.instances[self.device_id] = BotInstance(
+                device_id=self.device_id,
+                log_callback=self.append_log,
+                settings=port_settings
+            )
         else:
-            bot_engine.log_info(f"❌ เชื่อมต่อ {target} ไม่สำเร็จ ตรวจสอบว่าเปิด Emulator และพอร์ตถูกต้องหรือไม่")
+            inst = self.app.instances[self.device_id]
+            inst.update_settings(port_settings)
+            inst._gui_log_callback = self.append_log
 
-    adb_entry.bind("<Return>", lambda event: connect_adb_action())
-
-    conn_btn = ttk.Button(
-        adb_frame,
-        text="🔌 Connect",
-        bootstyle="info-outline",
-        width=12,
-        command=connect_adb_action
-    )
-    conn_btn.pack(side=tk.LEFT, padx=(3, 0))
-
-    # ---------------------------------------------------------------------------
-    # 2. Control Panel & Dashboard Metrics
-    # ---------------------------------------------------------------------------
-    dash_frame = ttk.Frame(root, padding=(15, 0, 15, 10))
-    dash_frame.pack(fill=tk.X)
-
-    # ปุ่มควบคุมหลัก (ซ้าย)
-    btn_card = ttk.Labelframe(dash_frame, text="🎮  CONTROL", bootstyle="info", padding=12)
-    btn_card.pack(side=tk.LEFT, fill=tk.Y)
-
-    def on_start_bot_click():
-        target = adb_entry_var.get().strip()
-        if target:
-            if ":" not in target and not target.startswith("emulator-"):
-                target = f"127.0.0.1:{target}"
-            config.DEVICE_ID = target
-            adb_entry_var.set(target)
-        bot_engine.start_bot()
-
-    start_btn = ttk.Button(
-        btn_card,
-        text="▶  START BOT (F6)",
-        bootstyle="success",
-        width=18,
-        command=on_start_bot_click
-    )
-    start_btn.pack(pady=4, ipady=5)
-
-    stop_btn = ttk.Button(
-        btn_card,
-        text="■  STOP BOT (F7)",
-        bootstyle="danger-outline",
-        width=18,
-        command=bot_engine.stop_bot
-    )
-    stop_btn.pack(pady=4, ipady=5)
-
-    # การ์ดสถิติ แดชบอร์ดเรียลไทม์ (ขวา)
-    stats_card = ttk.Labelframe(dash_frame, text="📊  LIVE PERFORMANCE DASHBOARD", bootstyle="dark", padding=12)
-    stats_card.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
-
-    for col in range(4):
-        stats_card.columnconfigure(col, weight=1)
-
-    # Row 0
-    state_lbl = ttk.Label(stats_card, text="State: READY", font=("Segoe UI", 9, "bold"), bootstyle="warning")
-    state_lbl.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=2)
-
-    rest_lbl = ttk.Label(stats_card, text="Next Rest In: -", font=("Segoe UI", 9), bootstyle="secondary")
-    rest_lbl.grid(row=0, column=2, columnspan=2, sticky=tk.W, pady=2)
-
-    # Row 1
-    runs_lbl = ttk.Label(stats_card, text="Total Runs: 0", font=("Segoe UI", 9))
-    runs_lbl.grid(row=1, column=0, sticky=tk.W, pady=2)
-
-    success_lbl = ttk.Label(stats_card, text="Success: 0", font=("Segoe UI", 9))
-    success_lbl.grid(row=1, column=1, sticky=tk.W, pady=2)
-
-    rate_lbl = ttk.Label(stats_card, text="Success Rate: 0.0%", font=("Segoe UI", 9, "bold"), bootstyle="success")
-    rate_lbl.grid(row=1, column=2, columnspan=2, sticky=tk.W, pady=2)
-
-    # Row 2
-    score_lbl = ttk.Label(stats_card, text="Last Score: -", font=("Segoe UI", 9))
-    score_lbl.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
-
-    coins_lbl = ttk.Label(stats_card, text="Last Coins: -", font=("Segoe UI", 9))
-    coins_lbl.grid(row=2, column=2, columnspan=2, sticky=tk.W, pady=2)
-
-    # Row 3 (Performance Rates)
-    coins_hr_lbl = ttk.Label(stats_card, text="🪙 Coins/Hr: 0", font=("Segoe UI", 9, "bold"), bootstyle="warning")
-    coins_hr_lbl.grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=2)
-
-    runs_hr_lbl = ttk.Label(stats_card, text="🔄 Runs/Hr: 0", font=("Segoe UI", 9, "bold"), bootstyle="info")
-    runs_hr_lbl.grid(row=3, column=2, columnspan=2, sticky=tk.W, pady=2)
-
-    # Row 4 (Mystery Boxes & Drop Rates)
-    boxes_lbl = ttk.Label(stats_card, text="🎁 Boxes: 0 (0.0/Hr)", font=("Segoe UI", 9, "bold"), bootstyle="purple")
-    boxes_lbl.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=2)
-
-    # Row 5 (Resets & Disconnects)
-    watchdog_lbl = ttk.Label(stats_card, text="Watchdog Resets: 0", font=("Segoe UI", 8), bootstyle="secondary")
-    watchdog_lbl.grid(row=5, column=0, sticky=tk.W, pady=2)
-
-    adb_lbl = ttk.Label(stats_card, text="ADB Disconnects: 0", font=("Segoe UI", 8), bootstyle="secondary")
-    adb_lbl.grid(row=5, column=2, columnspan=2, sticky=tk.W, pady=2)
-
-    # ---------------------------------------------------------------------------
-    # 3. Settings Toggle Panel & Speed Control
-    # ---------------------------------------------------------------------------
-    settings_frame = ttk.Frame(root, padding=(15, 0, 15, 8))
-    settings_frame.pack(fill=tk.X)
-
-    settings_card = ttk.Labelframe(settings_frame, text="⚙️  CONFIG & FEATURE TOGGLES", bootstyle="dark", padding=12)
-    settings_card.pack(fill=tk.X)
-
-    for col in range(4):
-        settings_card.columnconfigure(col, weight=1)
-
-    # Toggles
-    booster_var = tk.BooleanVar(value=getattr(config, "ENABLE_BOOSTER_BUY", True))
-    def on_booster_toggle():
-        config.ENABLE_BOOSTER_BUY = booster_var.get()
-        bot_engine.log_info(f"⚙️ ซื้อไอเทมเพิ่มพลัง = {'เปิด' if config.ENABLE_BOOSTER_BUY else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="🛒 ซื้อไอเทมบูสเตอร์", variable=booster_var, command=on_booster_toggle, bootstyle="success-round-toggle").grid(row=0, column=0, sticky=tk.W, padx=4, pady=4)
-
-    fast_start_var = tk.BooleanVar(value=getattr(config, "ENABLE_FAST_START_BOOST", True))
-    def on_fast_start_toggle():
-        config.ENABLE_FAST_START_BOOST = fast_start_var.get()
-        bot_engine.log_info(f"⚙️ Fast Start Boost = {'เปิด' if config.ENABLE_FAST_START_BOOST else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="⚡ Fast Start Boost", variable=fast_start_var, command=on_fast_start_toggle, bootstyle="success-round-toggle").grid(row=0, column=1, sticky=tk.W, padx=4, pady=4)
-
-    use_second_var = tk.BooleanVar(value=getattr(config, "ENABLE_USE_SECOND_COOKIE", True))
-    def on_use_second_toggle():
-        config.ENABLE_USE_SECOND_COOKIE = use_second_var.get()
-        bot_engine.log_info(f"⚙️ ใช้คุกกี้ตัวที่ 2 = {'เปิด' if config.ENABLE_USE_SECOND_COOKIE else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="🔁 ใช้คุกกี้ตัวที่ 2", variable=use_second_var, command=on_use_second_toggle, bootstyle="success-round-toggle").grid(row=0, column=2, sticky=tk.W, padx=4, pady=4)
-
-    line_var = tk.BooleanVar(value=getattr(config, "ENABLE_LINE_NOTIFY", True))
-    def on_line_toggle():
-        config.ENABLE_LINE_NOTIFY = line_var.get()
-        bot_engine.log_info(f"⚙️ LINE Notify = {'เปิด' if config.ENABLE_LINE_NOTIFY else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="🔔 แจ้งเตือน LINE", variable=line_var, command=on_line_toggle, bootstyle="success-round-toggle").grid(row=0, column=3, sticky=tk.W, padx=4, pady=4)
-
-    swipe_curve_var = tk.BooleanVar(value=getattr(config, "SWIPE_CURVE_ENABLED", True))
-    def on_swipe_curve_toggle():
-        config.SWIPE_CURVE_ENABLED = swipe_curve_var.get()
-        bot_engine.log_info(f"⚙️ ลากนิ้วโค้ง Bezier = {'เปิด' if config.SWIPE_CURVE_ENABLED else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="〰️ ลากนิ้วโค้ง Bezier", variable=swipe_curve_var, command=on_swipe_curve_toggle, bootstyle="success-round-toggle").grid(row=1, column=0, sticky=tk.W, padx=4, pady=4)
-
-    schedule_var = tk.BooleanVar(value=getattr(config, "SCHEDULE_ENABLED", False))
-    def on_schedule_toggle():
-        config.SCHEDULE_ENABLED = schedule_var.get()
-        bot_engine.log_info(f"⚙️ ตารางเวลาทำงาน = {'เปิด' if config.SCHEDULE_ENABLED else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="⏰ ตารางเวลาทำงาน", variable=schedule_var, command=on_schedule_toggle, bootstyle="success-round-toggle").grid(row=1, column=1, sticky=tk.W, padx=4, pady=4)
-
-    discord_var = tk.BooleanVar(value=getattr(config, "DISCORD_REPORT_ENABLED", True))
-    def on_discord_toggle():
-        config.DISCORD_REPORT_ENABLED = discord_var.get()
-        bot_engine.log_info(f"⚙️ รายงาน Discord Webhook = {'เปิด' if config.DISCORD_REPORT_ENABLED else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="💬 รายงาน Discord", variable=discord_var, command=on_discord_toggle, bootstyle="success-round-toggle").grid(row=1, column=2, sticky=tk.W, padx=4, pady=4)
-
-    ocr_score_var = tk.BooleanVar(value=getattr(config, "OCR_SCORE_ENABLED", True))
-    def on_ocr_score_toggle():
-        config.OCR_SCORE_ENABLED = ocr_score_var.get()
-        bot_engine.log_info(f"⚙️ อ่านคะแนน Gemini OCR = {'เปิด' if config.OCR_SCORE_ENABLED else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="🔍 อ่านคะแนน OCR", variable=ocr_score_var, command=on_ocr_score_toggle, bootstyle="success-round-toggle").grid(row=1, column=3, sticky=tk.W, padx=4, pady=4)
-
-    random_tap_var = tk.BooleanVar(value=getattr(config, "ENABLE_RANDOM_TAP_WHILE_WAIT", True))
-    def on_random_tap_toggle():
-        config.ENABLE_RANDOM_TAP_WHILE_WAIT = random_tap_var.get()
-        bot_engine.log_info(f"⚙️ สุ่มกดหน้าจอขณะรอ (over_game) = {'เปิด' if config.ENABLE_RANDOM_TAP_WHILE_WAIT else 'ปิด'}")
-    ttk.Checkbutton(settings_card, text="🎲 สุ่มกดขณะรอ", variable=random_tap_var, command=on_random_tap_toggle, bootstyle="warning-round-toggle").grid(row=2, column=0, sticky=tk.W, padx=4, pady=4)
-
-    # Speed & Preset Profile Selector
-    ttk.Label(settings_card, text="🚀 ความรัวการกด:", font=("Segoe UI", 9)).grid(row=3, column=0, sticky=tk.W, padx=4, pady=(6, 0))
-    speed_map = {"100ms (ปกติ)": 100, "50ms (รัวเร็ว)": 50, "30ms (รัวมาก)": 30}
-    speed_var = tk.StringVar(value="50ms (รัวเร็ว)")
-
-    def on_speed_change(event=None):
-        selected = speed_var.get()
-        speed_ms = speed_map.get(selected, 50)
-        config.BOOST_TAP_SPEED_MS = speed_ms
-        bot_engine.log_info(f"⚙️ ความรัวการกด = {selected} ({speed_ms}ms)")
-
-    speed_menu = ttk.Combobox(settings_card, textvariable=speed_var, values=list(speed_map.keys()), state="readonly", bootstyle="success", width=16)
-    speed_menu.grid(row=3, column=1, sticky=tk.W, padx=4, pady=(6, 0))
-    speed_menu.bind("<<ComboboxSelected>>", on_speed_change)
-
-    # Preset Profiles System (100% Custom User Profiles)
-    ttk.Label(settings_card, text="📋 โปรไฟล์ Preset:", font=("Segoe UI", 9, "bold"), bootstyle="info").grid(row=3, column=2, sticky=tk.W, padx=4, pady=(6, 0))
-
-    custom_profiles = load_custom_profiles()
-
-    default_placeholder = "เลือกโปรไฟล์ Preset" if custom_profiles else "ไม่มีโปรไฟล์ (กดบันทึกเพื่อสร้าง)"
-    profile_var = tk.StringVar(value=default_placeholder)
-
-    def on_profile_change(event=None):
-        name = profile_var.get()
-        p = custom_profiles.get(name)
-        if not p:
+        inst = self.app.instances[self.device_id]
+        if inst.running or getattr(inst, "_thread_active", False):
+            self.append_log("⚠️ บอทกำลังทำงานอยู่แล้ว")
             return
 
-        booster_var.set(p.get("booster", True))
-        on_booster_toggle()
+        inst._thread_active = True
 
-        fast_start_var.set(p.get("fast_start", True))
-        on_fast_start_toggle()
+        self.append_log(f"🚀 กำลังเริ่มบอทบนพอร์ต {self.device_id}...")
+        
+        def _run():
+            try:
+                inst.start_bot()
+                inst.bot_loop()
+            finally:
+                inst._thread_active = False
+                inst.running = False
+                try:
+                    self.after(0, lambda: self._status_lbl.config(text="🔴 STOPPED", bootstyle="danger"))
+                except Exception:
+                    pass
 
-        use_second_var.set(p.get("use_second", True))
-        on_use_second_toggle()
+        threading.Thread(target=_run, daemon=True).start()
+        self._status_lbl.config(text="🟢 RUNNING", bootstyle="success")
 
-        line_var.set(p.get("line", True))
-        on_line_toggle()
+    def stop_bot_action(self):
+        inst = self.app.instances.get(self.device_id)
+        if inst:
+            self.append_log("🛑 ส่งสัญญาณหยุดบอท...")
+            inst.stop_bot()
+            inst._thread_active = False
+            inst.running = False
+        self._status_lbl.config(text="🔴 STOPPED", bootstyle="danger")
 
-        swipe_curve_var.set(p.get("swipe_curve", True))
-        on_swipe_curve_toggle()
-
-        schedule_var.set(p.get("schedule", False))
-        on_schedule_toggle()
-
-        discord_var.set(p.get("discord", True))
-        on_discord_toggle()
-
-        ocr_score_var.set(p.get("ocr_score", True))
-        on_ocr_score_toggle()
-
-        random_tap_var.set(p.get("random_tap", True))
-        on_random_tap_toggle()
-
-        speed_var.set(p.get("speed", "50ms (รัวเร็ว)"))
-        on_speed_change()
-
-        bot_engine.log_info(f"📋 โหลดและใช้โปรไฟล์เซ็ตติ้ง: {name} เรียบร้อย!")
-
-    profile_menu = ttk.Combobox(settings_card, textvariable=profile_var, values=list(custom_profiles.keys()), state="readonly", bootstyle="info", width=22)
-    profile_menu.grid(row=3, column=3, sticky=tk.W, padx=4, pady=(6, 0))
-    profile_menu.bind("<<ComboboxSelected>>", on_profile_change)
-
-    # ปุ่มจัดการ Custom Preset (Save / Delete)
-    profile_btn_frame = ttk.Frame(settings_card)
-    profile_btn_frame.grid(row=4, column=2, columnspan=2, sticky=tk.E, padx=4, pady=(6, 0))
-
-    def save_custom_profile_action():
-        from tkinter import simpledialog
-        name = simpledialog.askstring("บันทึกโปรไฟล์ใหม่", "ตั้งชื่อโปรไฟล์การตั้งค่าของคุณ (เช่น 'สูตรคุกกี้ส้ม'):", parent=root)
-        if not name or not name.strip():
+    # ------------------------------------------------------------------
+    def update_stats(self):
+        inst = self.app.instances.get(self.device_id)
+        if not inst:
             return
+        try:
+            is_running = inst.running
+            self._status_lbl.config(
+                text="🟢 RUNNING" if is_running else "🔴 STOPPED",
+                bootstyle="success" if is_running else "danger"
+            )
+            if is_running:
+                s = inst.session_stats
+                perf = inst.get_performance_metrics()
+                state = getattr(inst, "current_state", "-")
+                self._lbl_state.config(text=f"State: {state}")
+                self._lbl_runs.config(text=f"Total Runs: {s.get('total_runs', 0)}")
+                self._lbl_success.config(text=f"Success: {s.get('successful_runs', 0)}")
+                rate = perf.get("success_rate_pct", 0.0)
+                self._lbl_rate.config(text=f"Rate: {rate}%")
+                self._lbl_coins.config(text=f"🪙 Coins/Hr: {perf.get('coins_per_hour', 0):,}")
+                self._lbl_boxes.config(text=f"🎁 Boxes: {perf.get('total_boxes', 0)}")
+                self._lbl_score.config(text=f"🏆 Last Score: {s.get('last_score', 0):,}")
 
-        name = name.strip()
-        if not name.startswith("⭐"):
-            name = f"⭐ {name}"
+                nr = getattr(inst, "next_rest_time", None)
+                if nr:
+                    import time as _t
+                    secs_left = max(0, int(nr - _t.time()))
+                    m, s2 = divmod(secs_left, 60)
+                    self._lbl_rest.config(text=f"Next Rest: {m:02d}:{s2:02d}")
+        except Exception:
+            pass
 
-        profile_data = {
-            "booster": booster_var.get(),
-            "fast_start": fast_start_var.get(),
-            "use_second": use_second_var.get(),
-            "line": line_var.get(),
-            "swipe_curve": swipe_curve_var.get(),
-            "schedule": schedule_var.get(),
-            "discord": discord_var.get(),
-            "ocr_score": ocr_score_var.get(),
-            "random_tap": random_tap_var.get(),
-            "speed": speed_var.get()
-        }
 
-        custom_profiles[name] = profile_data
-        save_custom_profiles_to_disk(custom_profiles)
+# ---------------------------------------------------------------------------
+# PORT SETTINGS DIALOG (Toplevel)
+# ---------------------------------------------------------------------------
+class PortSettingsDialog(tk.Toplevel):
+    def __init__(self, parent, app, device_id):
+        super().__init__(parent)
+        self.app = app
+        self.device_id = device_id
+        self.key = self.app.get_port_key(device_id)
+        self.pdata = self.app.saved_ports.get(self.key, {})
+        self.nickname = self.pdata.get("nickname", self.device_id)
 
-        profile_menu.configure(values=list(custom_profiles.keys()))
-        profile_var.set(name)
-        bot_engine.log_info(f"💾 บันทึกโปรไฟล์คัสทอม '{name}' สำเร็จแล้ว!")
+        self.title(f"⚙️ ตั้งค่าพอร์ต — {self.nickname} ({self.device_id})")
+        self.geometry("620x680")
+        self.resizable(True, True)
+        self.grab_set()
 
-    def delete_custom_profile_action():
-        current_name = profile_var.get()
+        self.port_settings = config.get_port_settings(self.pdata)
 
-        if current_name in custom_profiles:
-            del custom_profiles[current_name]
-            save_custom_profiles_to_disk(custom_profiles)
+        self._build_ui()
 
-            profile_menu.configure(values=list(custom_profiles.keys()))
-            profile_var.set("เลือกโปรไฟล์ Preset" if custom_profiles else "ไม่มีโปรไฟล์ (กดบันทึกเพื่อสร้าง)")
-            bot_engine.log_info(f"🗑️ ลบโปรไฟล์คัสทอม '{current_name}' เรียบร้อยแล้ว!")
-        else:
-            bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์คัสทอมที่ต้องการลบก่อน")
+    def _build_ui(self):
+        container = ttk.Frame(self, padding=20)
+        container.pack(fill=tk.BOTH, expand=True)
 
-    ttk.Button(profile_btn_frame, text="💾 บันทึก Preset คัสทอม", bootstyle="success-outline", width=16, command=save_custom_profile_action).pack(side=tk.LEFT, padx=3)
-    ttk.Button(profile_btn_frame, text="🗑️ ลบ Preset", bootstyle="danger-outline", width=10, command=delete_custom_profile_action).pack(side=tk.LEFT, padx=3)
+        ttk.Label(container, text=f"📱 ตั้งค่าพอร์ต: {self.nickname}",
+                  font=("Segoe UI", 14, "bold"), bootstyle="info").pack(anchor=tk.W, pady=(0, 2))
+        ttk.Label(container, text=f"Device ID: {self.device_id}",
+                  font=("Consolas", 9), bootstyle="secondary").pack(anchor=tk.W, pady=(0, 14))
 
-    # ---------------------------------------------------------------------------
-    # 4. Quick Test Tools Panel
-    # ---------------------------------------------------------------------------
-    tools_frame = ttk.Frame(root, padding=(15, 0, 15, 6))
-    tools_frame.pack(fill=tk.X)
+        sf = ttk.Frame(container)
+        sf.pack(fill=tk.BOTH, expand=True)
 
-    tools_card = ttk.Labelframe(tools_frame, text="🛠️  QUICK TEST TOOLS", bootstyle="dark", padding=8)
-    tools_card.pack(fill=tk.X)
+        # Toggles section
+        self.vars = {}
+        toggles = [
+            ("ENABLE_BOOSTER_BUY",          "ซื้อไอเทมเพิ่มพลัง (Booster)"),
+            ("ENABLE_FAST_START_BOOST",      "Fast Start Boost (กดรัวตอนเริ่มวิ่ง)"),
+            ("ENABLE_USE_SECOND_COOKIE",     "ใช้คุกกี้ตัวที่ 2 เมื่อมีให้กด"),
+            ("ENABLE_LINE_NOTIFY",           "ส่งแจ้งเตือน LINE"),
+            ("ENABLE_RANDOM_TAP_WHILE_WAIT", "สุ่มกดระหว่างรอ (over_game)"),
+            ("DISCORD_REPORT_ENABLED",       "ส่งรายงาน Discord"),
+            ("OCR_SCORE_ENABLED",            "อ่านคะแนนด้วย Gemini OCR"),
+            ("SCHEDULE_ENABLED",             "ระบบตารางเวลาทำงาน"),
+        ]
 
-    def test_line_action():
-        bot_engine.log_info("🔔 กำลังทดสอบส่งข้อความเข้า LINE...")
-        threading.Thread(target=lambda: send_line_message("🔔 ทดสอบการแจ้งเตือนจาก Cookie Run Classic Bot"), daemon=True).start()
+        toggles_frame = ttk.Labelframe(sf, text="🎮 สวิตช์ควบคุมระบบบอทเฉพาะพอร์ตนี้", bootstyle="primary", padding=15)
+        toggles_frame.pack(fill=tk.X, pady=(0, 15))
 
-    def test_discord_action():
-        bot_engine.log_info("💬 กำลังทดสอบส่ง Discord Embed...")
-        threading.Thread(target=lambda: send_discord_embed(
-            title="🔔 ทดสอบระบบ Discord Webhook",
-            fields=[{"name": "สถานะ", "value": "`ใช้งานได้ปกติ ✅`", "inline": True}],
-            color=COLOR_INFO,
-            description="ทดสอบการแจ้งเตือนรูปแบบ Embed จากหน้า GUI"
-        ), daemon=True).start()
+        for attr, label in toggles:
+            row = ttk.Frame(toggles_frame)
+            row.pack(fill=tk.X, pady=4)
+            cur_val = self.port_settings.get(attr, True)
+            var = tk.BooleanVar(value=bool(cur_val))
+            self.vars[attr] = var
+            ttk.Checkbutton(row, variable=var, bootstyle="success-round-toggle").pack(side=tk.LEFT)
+            ttk.Label(row, text=f"  {label}", font=("Segoe UI", 10)).pack(side=tk.LEFT)
 
-    def test_gemini_action():
-        bot_engine.log_info("📸 กำลังทดสอบ Gemini OCR อ่านหน้าจอสด...")
-        def run_test():
-            scr = grab_screen()
-            if scr is None:
-                bot_engine.log_info("❌ จับภาพไม่สำเร็จ ตรวจสอบ ADB ก่อน")
-                return
-            res = read_game_score_with_gemini(scr)
-            if res:
-                bot_engine.log_info(f"✅ Gemini OCR สำเร็จ! Score: {res['score']:,} | Coins: {res['coins']:,}")
-            else:
-                bot_engine.log_info("⚠️ Gemini OCR อ่านไม่สำเร็จ หรือไม่พบหน้าสรุปคะแนน")
-        threading.Thread(target=run_test, daemon=True).start()
+        # Discord Webhook selection
+        wh_frame = ttk.Labelframe(sf, text="💬 Discord Webhook สำหรับพอร์ตนี้", bootstyle="info", padding=15)
+        wh_frame.pack(fill=tk.X, pady=(0, 15))
 
-    def open_webhook_manager_dialog(parent):
-        dialog = tk.Toplevel(parent)
-        dialog.title("🔔 จัดการโปรไฟล์ Discord Webhooks")
-        dialog.geometry("750x550")
-        dialog.minsize(650, 450)
-        dialog.resizable(True, True)
-        dialog.transient(parent)
-        dialog.grab_set()
+        ttk.Label(wh_frame, text="เลือกโปรไฟล์ Webhook ที่ต้องการให้พอร์ตนี้ใช้ส่งรายงาน:",
+                  font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(0, 6))
 
-        header = ttk.Frame(dialog, padding=(15, 10))
-        header.pack(fill=tk.X)
-        ttk.Label(header, text="🔔 Discord Webhooks Manager (Multi-Profile)", font=("Segoe UI", 11, "bold"), bootstyle="info").pack(anchor=tk.W)
-        ttk.Label(header, text="สร้างโปรไฟล์ Webhook ได้หลายตัว ตั้งชื่อ เลือกเปิด/ปิด หรือทดสอบส่งแยกโปรไฟล์ได้ (สามารถขยายหน้าต่างได้)", font=("Segoe UI", 8), bootstyle="secondary").pack(anchor=tk.W)
+        webhooks = get_discord_webhooks()
+        wh_options = ["[ALL] ส่งทุก Webhook ที่เปิดใช้งาน", "[NONE] ปิดใช้งาน"]
+        for wh in webhooks:
+            if isinstance(wh, dict) and wh.get("name"):
+                wh_options.append(wh["name"])
 
-        list_frame = ttk.Frame(dialog, padding=(15, 5))
+        selected_wh = self.port_settings.get("SELECTED_DISCORD_WEBHOOK", "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน")
+        if selected_wh not in wh_options:
+            selected_wh = "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"
+
+        self.wh_var = tk.StringVar(value=selected_wh)
+        combobox = ttk.Combobox(wh_frame, textvariable=self.wh_var, values=wh_options, state="readonly", font=("Segoe UI", 10))
+        combobox.pack(fill=tk.X, pady=4)
+
+        # Action Buttons
+        btn_box = ttk.Frame(container)
+        btn_box.pack(fill=tk.X, pady=(15, 0))
+
+        ttk.Button(btn_box, text="💾 บันทึกการตั้งค่าพอร์ต", bootstyle="success",
+                   command=self._save_settings).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_box, text="ยกเลิก", bootstyle="secondary-outline",
+                   command=self.destroy).pack(side=tk.RIGHT, padx=5)
+
+    def _save_settings(self):
+        new_settings = {}
+        for attr, var in self.vars.items():
+            new_settings[attr] = var.get()
+        new_settings["SELECTED_DISCORD_WEBHOOK"] = self.wh_var.get()
+
+        # Update saved_ports dict
+        if self.key in self.app.saved_ports:
+            self.app.saved_ports[self.key]["settings"] = new_settings
+            config.save_saved_ports(self.app.saved_ports)
+
+        # Update running instance if any
+        inst = self.app.instances.get(self.device_id)
+        if inst:
+            inst.update_settings(new_settings)
+
+        messagebox.showinfo("บันทึกสำเร็จ", f"บันทึกการตั้งค่าสำหรับพอร์ต {self.nickname} เรียบร้อยแล้ว!")
+        self.destroy()
+
+
+# ---------------------------------------------------------------------------
+# SETTINGS WINDOW (Toplevel)
+# ---------------------------------------------------------------------------
+class SettingsWindow(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("⚙️ ตั้งค่า — Cookie Run Auto Bot")
+        self.geometry("820x680")
+        self.resizable(True, True)
+        self.grab_set()
+
+        notebook = ttk.Notebook(self, bootstyle="dark")
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Tab 1: LINE & Gemini
+        tab_api = ttk.Frame(notebook, padding=20)
+        notebook.add(tab_api, text="🔑 API Keys")
+        self._build_api_tab(tab_api)
+
+        # Tab 2: Discord
+        tab_discord = ttk.Frame(notebook, padding=20)
+        notebook.add(tab_discord, text="💬 Discord")
+        self._build_discord_tab(tab_discord)
+
+        # Tab 3: Bot Toggles
+        tab_toggle = ttk.Frame(notebook, padding=20)
+        notebook.add(tab_toggle, text="🎮 การตั้งค่าบอท")
+        self._build_toggles_tab(tab_toggle)
+
+        # Tab 4: Test
+        tab_test = ttk.Frame(notebook, padding=20)
+        notebook.add(tab_test, text="🧪 ทดสอบ")
+        self._build_test_tab(tab_test)
+
+    # -- API Keys Tab --
+    def _build_api_tab(self, parent):
+        def _field(label, value, key):
+            row = ttk.Frame(parent)
+            row.pack(fill=tk.X, pady=6)
+            ttk.Label(row, text=label, font=("Segoe UI", 9, "bold"), width=28).pack(side=tk.LEFT)
+            var = tk.StringVar(value=value or "")
+            entry = ttk.Entry(row, textvariable=var, font=("Consolas", 9), width=50)
+            entry.pack(side=tk.LEFT, padx=6)
+            ttk.Button(row, text="💾 บันทึก", bootstyle="success-outline",
+                       command=lambda k=key, v=var: self._save_key(k, v.get())).pack(side=tk.LEFT)
+
+        ttk.Label(parent, text="🔑 ตั้งค่า API Keys และ Tokens",
+                  font=("Segoe UI", 13, "bold"), bootstyle="warning").pack(anchor=tk.W, pady=(0, 16))
+
+        _field("LINE Channel Access Token:", LINE_CHANNEL_ACCESS_TOKEN, "line_channel_access_token")
+        _field("LINE User ID:", LINE_USER_ID, "line_user_id")
+        _field("Gemini API Key:", GEMINI_API_KEY, "gemini_api_key")
+
+        ttk.Separator(parent).pack(fill=tk.X, pady=14)
+        ttk.Label(parent, text="ค่าที่บันทึกจะถูกเขียนลงในไฟล์ .env ทันที",
+                  font=("Segoe UI", 9), bootstyle="secondary").pack(anchor=tk.W)
+
+    def _save_key(self, key, value):
+        save_secret(key, value)
+        messagebox.showinfo("บันทึกสำเร็จ", f"บันทึกค่า {key.upper()} เรียบร้อยแล้ว")
+
+    # -- Discord Tab --
+    def _build_discord_tab(self, parent):
+        ttk.Label(parent, text="💬 จัดการ Discord Webhook Profiles",
+                  font=("Segoe UI", 13, "bold"), bootstyle="warning").pack(anchor=tk.W, pady=(0, 12))
+
+        self._webhooks = get_discord_webhooks()
+
+        list_frame = ttk.Frame(parent)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        columns = ("status", "name", "url")
-        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=8, selectmode="browse")
-        tree.heading("status", text="สถานะ")
-        tree.heading("name", text="ชื่อโปรไฟล์")
-        tree.heading("url", text="Webhook URL")
+        self._wh_rows_frame = ttk.Frame(list_frame)
+        self._wh_rows_frame.pack(fill=tk.BOTH, expand=True)
+        self._render_webhook_rows()
 
-        tree.column("status", width=80, anchor="center")
-        tree.column("name", width=200, anchor="w")
-        tree.column("url", width=420, anchor="w")
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        add_frame = ttk.Frame(parent)
+        add_frame.pack(fill=tk.X, pady=10)
+        ttk.Label(add_frame, text="ชื่อ:", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        self._wh_name_var = tk.StringVar()
+        ttk.Entry(add_frame, textvariable=self._wh_name_var, width=15,
+                  font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=4)
+        ttk.Label(add_frame, text="URL:", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        self._wh_url_var = tk.StringVar()
+        ttk.Entry(add_frame, textvariable=self._wh_url_var, width=45,
+                  font=("Consolas", 9)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(add_frame, text="➕ เพิ่ม", bootstyle="success",
+                   command=self._add_webhook).pack(side=tk.LEFT, padx=4)
 
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscroll=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    def _render_webhook_rows(self):
+        for w in self._wh_rows_frame.winfo_children():
+            w.destroy()
+        for i, wh in enumerate(self._webhooks):
+            row = ttk.Frame(self._wh_rows_frame)
+            row.pack(fill=tk.X, pady=3)
+            en_var = tk.BooleanVar(value=wh.get("enabled", True))
+            ttk.Checkbutton(row, variable=en_var, bootstyle="success",
+                            command=lambda v=en_var, idx=i: self._toggle_webhook(idx, v.get())
+                            ).pack(side=tk.LEFT)
+            ttk.Label(row, text=f"[{wh.get('name', '')}]",
+                      font=("Segoe UI", 9, "bold"), width=20).pack(side=tk.LEFT)
+            ttk.Label(row, text=wh.get("url", "")[:55] + "...",
+                      font=("Consolas", 8), bootstyle="secondary").pack(side=tk.LEFT, padx=6)
+            ttk.Button(row, text="🧪 ทดสอบ", bootstyle="info-outline",
+                       command=lambda u=wh.get("url", ""): self._test_webhook(u)).pack(side=tk.LEFT, padx=4)
+            ttk.Button(row, text="🗑️", bootstyle="danger",
+                       command=lambda idx=i: self._del_webhook(idx)).pack(side=tk.RIGHT)
 
-        webhooks_data = get_discord_webhooks()
+    def _add_webhook(self):
+        name = self._wh_name_var.get().strip()
+        url = self._wh_url_var.get().strip()
+        if not name or not url:
+            messagebox.showwarning("คำเตือน", "กรุณากรอกชื่อและ URL")
+            return
+        self._webhooks.append({"name": name, "url": url, "enabled": True})
+        save_discord_webhooks(self._webhooks)
+        self._render_webhook_rows()
+        self._wh_name_var.set("")
+        self._wh_url_var.set("")
 
-        def refresh_tree():
-            for item in tree.get_children():
-                tree.delete(item)
-            for i, w in enumerate(webhooks_data):
-                st = "✅ เปิด" if w.get("enabled", True) else "❌ ปิด"
-                tree.insert("", tk.END, iid=str(i), values=(st, w.get("name", "Unnamed"), w.get("url", "")))
+    def _toggle_webhook(self, idx, val):
+        self._webhooks[idx]["enabled"] = val
+        save_discord_webhooks(self._webhooks)
 
-        refresh_tree()
+    def _del_webhook(self, idx):
+        del self._webhooks[idx]
+        save_discord_webhooks(self._webhooks)
+        self._render_webhook_rows()
 
-        form_frame = ttk.Labelframe(dialog, text="➕ เพิ่ม / แก้ไขโปรไฟล์ Webhook", padding=10)
-        form_frame.pack(fill=tk.X, padx=15, pady=5)
+    def _test_webhook(self, url):
+        if url:
+            try:
+                send_discord_test_to_url(url, "🔔 ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot ✅")
+                messagebox.showinfo("ทดสอบ Discord", "ส่งข้อความทดสอบเรียบร้อยแล้ว!")
+            except Exception as e:
+                messagebox.showerror("ทดสอบ Discord", f"เกิดข้อผิดพลาด: {e}")
 
-        form_grid = ttk.Frame(form_frame)
-        form_grid.pack(fill=tk.X, expand=True)
-        form_grid.columnconfigure(1, weight=1)
+    # -- Bot Toggles Tab --
+    def _build_toggles_tab(self, parent):
+        ttk.Label(parent, text="🎮 ตั้งค่าสวิตช์ควบคุมบอท",
+                  font=("Segoe UI", 13, "bold"), bootstyle="warning").pack(anchor=tk.W, pady=(0, 16))
 
-        ttk.Label(form_grid, text="ชื่อโปรไฟล์:", font=("Segoe UI", 9)).grid(row=0, column=0, sticky=tk.W, padx=4, pady=2)
-        name_var = tk.StringVar()
-        name_entry = ttk.Entry(form_grid, textvariable=name_var, width=28)
-        name_entry.grid(row=0, column=1, sticky=tk.W, padx=4, pady=2)
+        toggles = [
+            ("ENABLE_BOOSTER_BUY",         "ซื้อไอเทมเพิ่มพลัง (Booster)"),
+            ("ENABLE_FAST_START_BOOST",     "Fast Start Boost (กดรัวตอนเริ่มวิ่ง)"),
+            ("ENABLE_USE_SECOND_COOKIE",    "ใช้คุกกี้ตัวที่ 2 เมื่อมีให้กด"),
+            ("ENABLE_LINE_NOTIFY",          "ส่งแจ้งเตือน LINE"),
+            ("ENABLE_RANDOM_TAP_WHILE_WAIT","สุ่มกดระหว่างรอ (over_game)"),
+            ("DISCORD_REPORT_ENABLED",      "ส่งรายงาน Discord"),
+            ("OCR_SCORE_ENABLED",           "อ่านคะแนนด้วย Gemini OCR"),
+            ("SCHEDULE_ENABLED",            "ระบบตารางเวลาทำงาน"),
+        ]
 
-        ttk.Label(form_grid, text="Webhook URL:", font=("Segoe UI", 9)).grid(row=1, column=0, sticky=tk.W, padx=4, pady=2)
-        url_var = tk.StringVar()
-        url_entry = ttk.Entry(form_grid, textvariable=url_var)
-        url_entry.grid(row=1, column=1, sticky=tk.EW, padx=4, pady=2)
+        for attr, label in toggles:
+            row = ttk.Frame(parent)
+            row.pack(fill=tk.X, pady=5)
+            cur = getattr(config, attr, False)
+            var = tk.BooleanVar(value=bool(cur))
+            ttk.Checkbutton(row, variable=var, bootstyle="success-round-toggle",
+                            command=lambda a=attr, v=var: setattr(config, a, v.get())
+                            ).pack(side=tk.LEFT)
+            ttk.Label(row, text=f"  {label}", font=("Segoe UI", 10)).pack(side=tk.LEFT)
 
-        status_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(form_grid, text="เปิดใช้งานโปรไฟล์นี้", variable=status_var, bootstyle="success-round-toggle").grid(row=0, column=1, sticky=tk.E, padx=4, pady=2)
+    # -- Test Tab --
+    def _build_test_tab(self, parent):
+        ttk.Label(parent, text="🧪 ทดสอบการเชื่อมต่อ",
+                  font=("Segoe UI", 13, "bold"), bootstyle="warning").pack(anchor=tk.W, pady=(0, 16))
 
-        editing_index = [-1]
+        self._test_log = scrolledtext.ScrolledText(
+            parent, height=12, bg="#0f172a", fg="#38bdf8",
+            font=("Consolas", 9), state="disabled"
+        )
+        self._test_log.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
 
-        def clear_inputs():
-            name_var.set("")
-            url_var.set("")
-            status_var.set(True)
-            editing_index[0] = -1
-            save_btn.config(text="➕ เพิ่มโปรไฟล์", bootstyle="success")
+        btn_row = ttk.Frame(parent)
+        btn_row.pack(fill=tk.X)
+        ttk.Button(btn_row, text="📨 ทดสอบ LINE", bootstyle="info",
+                   command=self._test_line).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_row, text="💬 ทดสอบ Discord", bootstyle="primary",
+                   command=self._test_discord).pack(side=tk.LEFT, padx=5)
 
-        def on_select(event):
-            sel = tree.selection()
-            if sel:
-                idx = int(sel[0])
-                item = webhooks_data[idx]
-                name_var.set(item.get("name", ""))
-                url_var.set(item.get("url", ""))
-                status_var.set(item.get("enabled", True))
-                editing_index[0] = idx
-                save_btn.config(text="💾 บันทึกแก้ไข", bootstyle="info")
+    def _log_test(self, msg):
+        self._test_log.configure(state="normal")
+        self._test_log.insert(tk.END, msg + "\n")
+        self._test_log.see(tk.END)
+        self._test_log.configure(state="disabled")
 
-        tree.bind("<<TreeviewSelect>>", on_select)
-
-        def save_action():
-            name = name_var.get().strip()
-            url = url_var.get().strip()
-            if not name or not url:
-                bot_engine.log_info("⚠️ กรุณากรอกทั้งชื่อโปรไฟล์และ Webhook URL")
-                return
-
-            new_item = {"name": name, "url": url, "enabled": status_var.get()}
-            if 0 <= editing_index[0] < len(webhooks_data):
-                webhooks_data[editing_index[0]] = new_item
-                bot_engine.log_info(f"✏️ อัปเดตโปรไฟล์ Webhook '{name}' สำเร็จ")
-            else:
-                webhooks_data.append(new_item)
-                bot_engine.log_info(f"➕ เพิ่มโปรไฟล์ Webhook '{name}' สำเร็จ")
-
-            save_discord_webhooks(webhooks_data)
-            refresh_tree()
-            clear_inputs()
-
-        def toggle_action():
-            sel = tree.selection()
-            if not sel:
-                bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์ Webhook ในตารางก่อน")
-                return
-            idx = int(sel[0])
-            webhooks_data[idx]["enabled"] = not webhooks_data[idx].get("enabled", True)
-            save_discord_webhooks(webhooks_data)
-            refresh_tree()
-            bot_engine.log_info(f"🔘 สลับสถานะโปรไฟล์ '{webhooks_data[idx]['name']}' = {'เปิด' if webhooks_data[idx]['enabled'] else 'ปิด'}")
-
-        def delete_action():
-            sel = tree.selection()
-            if not sel:
-                bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์ Webhook ที่ต้องการลบก่อน")
-                return
-            idx = int(sel[0])
-            deleted_name = webhooks_data[idx].get("name", "")
-            del webhooks_data[idx]
-            save_discord_webhooks(webhooks_data)
-            refresh_tree()
-            clear_inputs()
-            bot_engine.log_info(f"🗑️ ลบโปรไฟล์ Webhook '{deleted_name}' เรียบร้อยแล้ว")
-
-        def test_action():
-            url = url_var.get().strip()
-            name = name_var.get().strip() or "Test Profile"
-            if not url:
-                sel = tree.selection()
-                if sel:
-                    idx = int(sel[0])
-                    url = webhooks_data[idx].get("url", "")
-                    name = webhooks_data[idx].get("name", "")
-            if not url:
-                bot_engine.log_info("⚠️ กรุณาเลือกโปรไฟล์หรือกรอก Webhook URL เพื่อทดสอบ")
-                return
-
-            bot_engine.log_info(f"🧪 กำลังทดสอบส่งข้อความไปยังโปรไฟล์ '{name}'...")
-            def run_test():
-                ok = send_discord_test_to_url(url, name)
-                if ok:
-                    bot_engine.log_info(f"✅ ทดสอบส่ง Webhook '{name}' สำเร็จ!")
-                else:
-                    bot_engine.log_info(f"❌ ทดสอบส่ง Webhook '{name}' ไม่สำเร็จ ตรวจสอบ URL อีกครั้ง")
-            threading.Thread(target=run_test, daemon=True).start()
-
-        btn_box = ttk.Frame(dialog, padding=(15, 5, 15, 10))
-        btn_box.pack(fill=tk.X)
-
-        save_btn = ttk.Button(btn_box, text="➕ เพิ่มโปรไฟล์", bootstyle="success", width=14, command=save_action)
-        save_btn.pack(side=tk.LEFT, padx=3)
-
-        ttk.Button(btn_box, text="🔘 สลับเปิด/ปิด", bootstyle="warning-outline", width=13, command=toggle_action).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_box, text="🧪 ทดสอบส่ง", bootstyle="info-outline", width=12, command=test_action).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_box, text="🗑️ ลบโปรไฟล์", bootstyle="danger-outline", width=12, command=delete_action).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_box, text="🧹 เคลียร์", bootstyle="secondary-link", command=clear_inputs).pack(side=tk.RIGHT, padx=3)
-
-    # Webhook selector (per-window profile) - ช่วยให้แต่ละหน้าต่าง GUI เลือกโปรไฟล์ Webhook แยกกันได้
-    def get_webhook_options_list():
-        items = get_discord_webhooks()
-        names = [w.get("name", "Unnamed") for w in items]
-        opts = ["[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"] + names
-        return opts
-
-    webhook_sel_var = tk.StringVar(value=getattr(config, "SELECTED_DISCORD_WEBHOOK", "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"))
-    webhook_combo = ttk.Combobox(tools_card, textvariable=webhook_sel_var, values=get_webhook_options_list(), state="readonly", width=36)
-    webhook_combo.pack(side=tk.LEFT, padx=6)
-
-    def refresh_webhook_options():
+    def _test_line(self):
+        self._log_test("📨 กำลังส่งข้อความทดสอบ LINE...")
         try:
-            vals = get_webhook_options_list()
-            webhook_combo.configure(values=vals)
-            cur = webhook_sel_var.get()
-            if cur not in vals:
-                webhook_sel_var.set(vals[0])
-                config.SELECTED_DISCORD_WEBHOOK = vals[0]
+            send_line_message("🔔 ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot")
+            self._log_test("✅ ส่ง LINE สำเร็จ!")
+        except Exception as e:
+            self._log_test(f"❌ ล้มเหลว: {e}")
+
+    def _test_discord(self):
+        whs = get_discord_webhooks()
+        enabled = [w for w in whs if w.get("enabled")]
+        if not enabled:
+            self._log_test("❌ ไม่มี Discord Webhook ที่เปิดใช้งาน")
+            return
+        self._log_test(f"💬 กำลังทดสอบ {len(enabled)} Webhook...")
+        for wh in enabled:
+            try:
+                send_discord_test_to_url(wh["url"], "🔔 ทดสอบ Discord Webhook จาก Cookie Run Auto Bot ✅")
+                self._log_test(f"  ✅ [{wh['name']}] สำเร็จ")
+            except Exception as e:
+                self._log_test(f"  ❌ [{wh['name']}] ล้มเหลว: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Entry Point
+# ---------------------------------------------------------------------------
+def run_gui():
+    if sys.platform.startswith("win"):
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "cookierunbot.gui.multiinstance.v3"
+            )
         except Exception:
             pass
 
-    def on_webhook_select(event=None):
-        sel = webhook_sel_var.get()
-        config.SELECTED_DISCORD_WEBHOOK = sel
-        bot_engine.log_info(f"🔔 โปรไฟล์ Webhook ที่เลือก: {sel}")
-
-    webhook_combo.bind("<<ComboboxSelected>>", on_webhook_select)
-
-    def open_manager_and_refresh():
-        open_webhook_manager_dialog(root)
-        # หลังปิด dialog ให้รีเฟรชตัวเลือกใน combobox เผื่อผู้ใช้เพิ่ม/ลบโปรไฟล์
-        refresh_webhook_options()
-
-    ttk.Button(tools_card, text="🔔 Test LINE", bootstyle="secondary-outline", width=12, command=test_line_action).pack(side=tk.LEFT, padx=4)
-    ttk.Button(tools_card, text="💬 Test Discord", bootstyle="info-outline", width=12, command=test_discord_action).pack(side=tk.LEFT, padx=4)
-    ttk.Button(tools_card, text="📸 Test Gemini OCR", bootstyle="warning-outline", width=15, command=test_gemini_action).pack(side=tk.LEFT, padx=4)
-    ttk.Button(tools_card, text="⚙️ จัดการ Webhooks", bootstyle="primary", width=16, command=open_manager_and_refresh).pack(side=tk.LEFT, padx=4)
-
-    # ---------------------------------------------------------------------------
-    # 5. Real-time Console Log & Filter
-    # ---------------------------------------------------------------------------
-    log_frame = ttk.Frame(root, padding=(15, 4, 15, 10))
-    log_frame.pack(fill=tk.BOTH, expand=True)
-
-    log_top_bar = ttk.Frame(log_frame)
-    log_top_bar.pack(fill=tk.X, pady=(0, 4))
-
-    ttk.Label(log_top_bar, text="💬 REAL-TIME CONSOLE LOG", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
-
-    # Log Filter Combobox
-    filter_var = tk.StringVar(value="[ALL] ทั้งหมด")
-    filter_combo = ttk.Combobox(
-        log_top_bar,
-        textvariable=filter_var,
-        values=["[ALL] ทั้งหมด", "[INFO] ทั่วไป", "[DEBUG] ดีบัก"],
-        state="readonly",
-        width=14,
-        font=("Segoe UI", 8)
-    )
-    filter_combo.pack(side=tk.RIGHT, padx=5)
-
-    def refresh_log_display(event=None):
-        mode = filter_var.get()
-        log_area.configure(state='normal')
-        log_area.delete("1.0", tk.END)
-        for msg in raw_logs:
-            if mode == "[INFO] ทั่วไป" and "[DEBUG]" in msg:
-                continue
-            if mode == "[DEBUG] ดีบัก" and "[DEBUG]" not in msg:
-                continue
-            log_area.insert(tk.END, msg + "\n")
-        log_area.see(tk.END)
-        log_area.configure(state='disabled')
-
-    filter_combo.bind("<<ComboboxSelected>>", refresh_log_display)
-
-    def clear_log_action():
-        raw_logs.clear()
-        log_area.configure(state='normal')
-        log_area.delete("1.0", tk.END)
-        log_area.configure(state='disabled')
-
-    ttk.Button(log_top_bar, text="🧹 Clear Log", bootstyle="danger-link", command=clear_log_action).pack(side=tk.RIGHT)
-
-    log_area = scrolledtext.ScrolledText(
-        log_frame,
-        wrap=tk.WORD,
-        bg=LOG_BG,
-        fg=LOG_FG,
-        insertbackground="white",
-        borderwidth=0,
-        font=("Consolas", 9),
-        state='disabled'
-    )
-    log_area.pack(fill=tk.BOTH, expand=True)
-
-    def write_to_log_area(formatted_msg):
-        def update_ui():
-            raw_logs.append(formatted_msg)
-            if len(raw_logs) > 500:
-                raw_logs.pop(0)
-
-            mode = filter_var.get()
-            if mode == "[INFO] ทั่วไป" and "[DEBUG]" in formatted_msg:
-                return
-            if mode == "[DEBUG] ดีบัก" and "[DEBUG]" not in formatted_msg:
-                return
-
-            log_area.configure(state='normal')
-            log_area.insert(tk.END, formatted_msg + "\n")
-            log_area.see(tk.END)
-            log_area.configure(state='disabled')
-
-        try:
-            root.after(0, update_ui)
-        except Exception:
-            pass
-
-    bot_engine.set_gui_log_callback(write_to_log_area)
-
-    bot_thread = threading.Thread(target=bot_engine.bot_loop, daemon=True)
-    bot_thread.start()
-
-    # ลูปอัปเดตสถิติเรียลไทม์
-    def update_stats_loop():
-        try:
-            state_lbl.config(text=f"State: {bot_engine.current_state}")
-            runs_lbl.config(text=f"Total Runs: {bot_engine.session_stats['total_runs']}")
-            success_lbl.config(text=f"Success: {bot_engine.session_stats['successful_runs']}")
-            watchdog_lbl.config(text=f"Watchdog Resets: {bot_engine.session_stats['watchdog_resets']}")
-            adb_lbl.config(text=f"ADB Disconnects: {bot_engine.session_stats['adb_disconnects']}")
-
-            last_s = bot_engine.session_stats.get("last_score", 0)
-            last_c = bot_engine.session_stats.get("last_coins", 0)
-            score_lbl.config(text=f"Last Score: {last_s:,}" if last_s > 0 else "Last Score: -")
-            coins_lbl.config(text=f"Last Coins: {last_c:,}" if last_c > 0 else "Last Coins: -")
-
-            # Rates
-            perf = bot_engine.get_performance_metrics()
-            coins_hr_lbl.config(text=f"🪙 Coins/Hr: {perf['coins_per_hour']:,}")
-            runs_hr_lbl.config(text=f"🔄 Runs/Hr: {perf['runs_per_hour']}")
-            boxes_lbl.config(text=f"🎁 Boxes: {perf['total_boxes']} ({perf['boxes_per_hour']}/Hr)")
-            rate_lbl.config(text=f"Success Rate: {perf['success_rate_pct']}%")
-
-            if bot_engine.next_rest_time:
-                remaining = int(bot_engine.next_rest_time - time.time())
-                if remaining > 0:
-                    rm_min = remaining // 60
-                    rm_sec = remaining % 60
-                    rest_lbl.config(text=f"Next Rest In: {rm_min:02d}:{rm_sec:02d}")
-                else:
-                    rest_lbl.config(text="Next Rest In: Resting...")
-            else:
-                rest_lbl.config(text="Next Rest In: -")
-
-            if bot_engine.running:
-                start_btn.config(text="●  RUNNING...", bootstyle="success-outline")
-                stop_btn.config(text="■  STOP BOT (F7)", bootstyle="danger")
-            else:
-                start_btn.config(text="▶  START BOT (F6)", bootstyle="success")
-                stop_btn.config(text="■  STOPPED", bootstyle="danger-outline")
-
-        except Exception:
-            pass
-        root.after(500, update_stats_loop)
-
-    root.after(500, update_stats_loop)
-
-    def on_closing():
-        bot_engine.save_global_stats(session_done=True)
-        root.destroy()
-        os._exit(0)
-
-    root.protocol("WM_DELETE_WINDOW", on_closing)
+    root = ttk.Window(themename="darkly")
+    CookieBotGUI(root)
     root.mainloop()
 
 

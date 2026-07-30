@@ -79,14 +79,55 @@ INITIAL_STATE = "start_game"
 WATCHDOG_TIMEOUT_SECONDS = 180  # ถ้าบอทติดอยู่สถานะเดิมเกิน 3 นาที (180 วินาที) จะทำการ reset state
 ADB_MAX_RECONNECT_ATTEMPTS = 5   # จำนวนครั้งสูงสุดที่จะลอง reconnect ADB ใหม่ ก่อนส่งสัญญาณหยุดหรือเตือน LINE
 
-# ---------------------------------------------------------------------------
-# ตั้งค่าระบบสถิติและตรวจสอบ (Phase 2)
-# ---------------------------------------------------------------------------
-def get_stats_file_path():
+DEFAULT_PORT_SETTINGS = {
+    "ENABLE_BOOSTER_BUY": True,
+    "ENABLE_FAST_START_BOOST": True,
+    "ENABLE_USE_SECOND_COOKIE": True,
+    "ENABLE_LINE_NOTIFY": True,
+    "ENABLE_RANDOM_TAP_WHILE_WAIT": True,
+    "DISCORD_REPORT_ENABLED": True,
+    "OCR_SCORE_ENABLED": True,
+    "SCHEDULE_ENABLED": False,
+    "SELECTED_DISCORD_WEBHOOK": "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"
+}
+
+def get_port_settings(pdata):
+    settings = dict(DEFAULT_PORT_SETTINGS)
+    if isinstance(pdata, dict):
+        if "settings" in pdata and isinstance(pdata["settings"], dict):
+            settings.update(pdata["settings"])
+        else:
+            for k in DEFAULT_PORT_SETTINGS:
+                if k in pdata:
+                    settings[k] = pdata[k]
+    return settings
+
+PORTS_FILE_PATH = os.path.join(DATA_DIR, "saved_ports.json")
+
+import json
+
+def load_saved_ports():
+    if os.path.exists(PORTS_FILE_PATH):
+        try:
+            with open(PORTS_FILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"อ่านไฟล์ saved_ports.json ไม่สำเร็จ: {e}")
+    return {}
+
+def save_saved_ports(ports_dict):
+    try:
+        with open(PORTS_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(ports_dict, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"บันทึกไฟล์ saved_ports.json ไม่สำเร็จ: {e}")
+        return False
+
+def get_stats_file_path(device_id=None):
     """ดึง path ของไฟล์สถิติ แยกตาม Device/Port เพื่อไม่ให้รันหลายโปรแกรมแล้วสถิติตีกันได้"""
-    # อ่านจาก module globals() เลย เพื่อให้ได้ค่าล่าสุดเสมอ แม้ external code จะทำ config.DEVICE_ID = อะไรก็ตาม
-    dev = globals().get("DEVICE_ID", "127.0.0.1:5559")
-    dev_clean = dev.replace(":", "_").replace(".", "_")
+    dev = device_id or globals().get("DEVICE_ID", "127.0.0.1:5559")
+    dev_clean = str(dev).replace(":", "_").replace(".", "_")
     return os.path.join(DATA_DIR, f"bot_stats_{dev_clean}.json")
 
 HEALTH_CHECK_WARNING_THRESHOLD = 0.50 # แจ้งเตือนในตอนเริ่มรันบอทหาก score ของ template ต่ำกว่า 50%

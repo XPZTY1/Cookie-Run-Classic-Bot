@@ -13,12 +13,12 @@ COLOR_INFO    = 0x3b82f6   # น้ำเงิน — ข้อมูลทั�
 COLOR_ERROR   = 0xef4444   # แดง — error / crash
 
 
-def get_active_discord_webhooks():
+def get_active_discord_webhooks(target_webhook=None):
     """ดึงรายชื่อ (name, url) ของ Webhook ที่เปิดใช้งาน (enabled=True) ตามโปรไฟล์ที่เลือก"""
     if not getattr(config, "DISCORD_REPORT_ENABLED", True):
         return []
 
-    selected_target = getattr(config, "SELECTED_DISCORD_WEBHOOK", "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน")
+    selected_target = target_webhook or getattr(config, "SELECTED_DISCORD_WEBHOOK", "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน")
     if selected_target == "[NONE] ปิดใช้งาน":
         return []
 
@@ -36,11 +36,11 @@ def get_active_discord_webhooks():
     return active
 
 
-def send_discord_embed(title: str, fields: list, color: int = COLOR_SUCCESS, description: str = ""):
+def send_discord_embed(title: str, fields: list, color: int = COLOR_SUCCESS, description: str = "", target_webhook: str = None):
     """
     ส่งข้อมูลรายงานเข้า Discord ให้ทุก Webhook Profile ที่เปิดใช้งานอยู่ในรูปแบบ Embed
     """
-    active_webhooks = get_active_discord_webhooks()
+    active_webhooks = get_active_discord_webhooks(target_webhook=target_webhook)
     if not active_webhooks:
         return
 
@@ -73,11 +73,11 @@ def send_discord_embed(title: str, fields: list, color: int = COLOR_SUCCESS, des
             print(f"[Discord ({name})] เกิดข้อผิดพลาด: {e}")
 
 
-def send_discord_report(text: str):
+def send_discord_report(text: str, target_webhook: str = None):
     """
     ส่งข้อความรายงานแบบ plain text ให้ทุก Webhook Profile ที่เปิดใช้งานอยู่
     """
-    active_webhooks = get_active_discord_webhooks()
+    active_webhooks = get_active_discord_webhooks(target_webhook=target_webhook)
     if not active_webhooks:
         return
 
