@@ -5,7 +5,7 @@ FLOW = {
     "start_game": {
         "template": "start_button.png",
         "action": "click",
-        "delay": 3,
+        "delay": 1,
         "entry_delay": 8,  # รอ 2 วินาทีก่อนเริ่มกดปุ่มเมื่อกลับมาหน้าแรก เพื่อให้เกมโหลด UI เสร็จ
         "next_state": "item_boots",
     },
@@ -13,21 +13,21 @@ FLOW = {
     "item_boots": {
         "template": "boots_button.png",
         "action": "click",
-        "delay": 2,
+        "delay": 1,
         "next_state": "click_multi",
     },
 
     "click_multi": {
         "template": "buy_button.png",
         "action": "click",
-        "delay": 2,
+        "delay": 1,
         "next_state": "multi_buy",
     },
 
     "multi_buy": {
         "template": "multi_buy.png",
         "action": "click",
-        "delay": 2,
+        "delay": 1,
         "next_state": "let_go",
     },
 

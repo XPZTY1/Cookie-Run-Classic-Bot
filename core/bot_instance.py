@@ -42,6 +42,7 @@ from flows.pause_events_config import PAUSE_EVENTS
 from core.stats_manager import StatsManager
 from core.scheduler import SchedulerManager
 from core.recovery import RecoveryManager
+from core.heart_gifting import HeartGiftingManager
 
 sys_stdout_write = lambda s: sys.stdout.write(s)
 
@@ -69,6 +70,7 @@ class BotInstance:
         self.stats_mgr = StatsManager(self.device_id)
         self.sched_mgr = SchedulerManager(self)
         self.recov_mgr = RecoveryManager(self)
+        self.heart_mgr = HeartGiftingManager(self)
 
         self._interrupt_last_click = {}
         self.adb_lock = threading.Lock()
@@ -354,6 +356,10 @@ class BotInstance:
                 time.sleep(0.1)
 
     def check_interrupts(self, screen):
+        # ถ้ากำลังอยู่ใน Heart Gifting Flow ให้หยุด INTERRUPTS ทั้งหมดชั่วคราว
+        if self.heart_mgr.heart_gifting_active:
+            return None
+
         now = time.time()
         for name, cfg in INTERRUPTS.items():
             if name == "live_two" and not self.get_setting("ENABLE_USE_SECOND_COOKIE", True):
@@ -407,6 +413,11 @@ class BotInstance:
         self.log_debug("[interrupt_watcher] เริ่มทำงาน (background)")
         while self.running and not self._interrupt_thread_stop:
             try:
+                # ถ้ากำลังอยู่ใน Heart Gifting Flow ให้หยุด watcher ชั่วคราว
+                if self.heart_mgr.heart_gifting_active:
+                    time.sleep(0.2)
+                    continue
+
                 screen = grab_screen(device_id=self.device_id)
                 if screen is None:
                     time.sleep(0.1)
@@ -571,6 +582,14 @@ class BotInstance:
 
                     if match:
                         action_func = self.ACTION_FUNCS[action_name]
+
+                        # ตรวจสอบ Heart Gifting: ถ้าถึงเวลาและอยู่สถานะ start_game
+                        # ต้องทำก่อนกด start เพื่อให้ส่งหัวใจระหว่างรอเริ่มรอบใหม่
+                        if self.current_state == "start_game" and self.heart_mgr.check_due():
+                            self.log_info("💌 [Heart] ถึงเวลาส่งหัวใจ! จะทำการส่งก่อนเริ่มเกมรอบถัดไป...")
+                            self.heart_mgr.run_heart_flow()
+                            # หลังส่งหัวใจเสร็จ ให้วนลูปกลับมาเช็กสถานะใหม่
+                            continue
 
                         if self.current_state == "start_game":
                             self.log_info("🍪 คลิกเริ่มรันรอบใหม่...")

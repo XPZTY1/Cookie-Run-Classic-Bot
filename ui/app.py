@@ -142,7 +142,7 @@ class CookieBotGUI:
         self.brand_frame = brand
 
         mark = tk.Label(
-            brand, text="CR", bg=theme.PRIMARY, fg="#FFFFFF",
+            brand, text="🍪", bg=theme.PRIMARY, fg="#FFFFFF",
             font=("Segoe UI", 10, "bold"), width=3, pady=5,
         )
         mark.pack(side=tk.LEFT, anchor="n", padx=(0, 10))

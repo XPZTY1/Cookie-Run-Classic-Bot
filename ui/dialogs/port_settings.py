@@ -113,6 +113,37 @@ class PortSettingsDialog(tk.Toplevel):
             ttk.Label(card.body, text=title, font=theme.FONT_H3).pack(anchor=tk.W, pady=(0, 6))
             for attr, label, hint in controls:
                 self._build_toggle(card.body, attr, label, hint)
+        # --- ส่ง/รับหัวใจอัตโนมัติประจำพอร์ต ---
+        heart_card = theme.GlassCard(content, accent="#FF6B9D", padding=14)
+        heart_card.pack(fill=tk.X, pady=5)
+        body_h = heart_card.body
+        ttk.Label(body_h, text="💌 ส่ง/รับหัวใจอัตโนมัติประจำพอร์ต", font=theme.FONT_H3).pack(anchor=tk.W, pady=(0, 8))
+        self._build_toggle(body_h, "HEART_AUTO_ENABLED", "เปิดระบบส่งหัวใจ", "ส่ง/รับหัวใจให้อัตโนมัติสำหรับพอร์ตนี้เฉพาะ")
+
+        interval_row = ttk.Frame(body_h, padding=(0, 7))
+        interval_row.pack(fill=tk.X)
+        copy_h = ttk.Frame(interval_row)
+        copy_h.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Label(copy_h, text="รอบเวลาส่งหัวใจ (นาที)", font=theme.FONT_BODY_BOLD).pack(anchor=tk.W)
+        ttk.Label(copy_h, text="ส่งหัวใจทุกๆ N นาที (เฉพาะพอร์ตนี้)", font=theme.FONT_SMALL, bootstyle="secondary").pack(anchor=tk.W, pady=(1, 0))
+        self.heart_interval_var = tk.IntVar(value=int(self.port_settings.get("HEART_INTERVAL_MINUTES", 30)))
+        spin = ttk.Spinbox(
+            interval_row,
+            from_=5, to=240, increment=5,
+            textvariable=self.heart_interval_var,
+            width=6,
+        )
+        spin.pack(side=tk.RIGHT, padx=(8, 0))
+
+        btn_row = ttk.Frame(body_h, padding=(0, 7))
+        btn_row.pack(fill=tk.X)
+        ttk.Button(
+            btn_row,
+            text="🧪 บังคับส่งหัวใจในรอบถัดไปทันที",
+            bootstyle="pink-outline",
+            command=self._trigger_test_heart,
+        ).pack(anchor=tk.W)
+
 
     def _build_toggle(self, parent, attr, label, hint):
         row = ttk.Frame(parent, padding=(0, 7))
@@ -175,9 +206,19 @@ class PortSettingsDialog(tk.Toplevel):
         )
         note.pack(fill=tk.X, pady=(14, 0))
 
+    def _trigger_test_heart(self):
+        instance = self.app.instances.get(self.device_id)
+        if not instance or not instance.running:
+            messagebox.showwarning("บอทไม่ได้เปิดรัน", "กรุณากดเปิดทำงานบอทของพอร์ตนี้ก่อนกดทดสอบ")
+            return
+        instance.heart_mgr._last_heart_time = 0
+        instance.log_info("🧪 [Test] ตั้งค่าบังคับส่งหัวใจเรียบร้อย! บอทจะเริ่มส่งหัวใจทันทีที่กลับมาหน้าหลัก (start_game)")
+        messagebox.showinfo("ตั้งค่าสำเร็จ", "ตั้งค่าสำเร็จแล้ว! บอทพอร์ตนี้จะสลับไปส่งหัวใจทันทีเมื่อพบบอทอยู่หน้าหลัก")
+
     def _save_settings(self):
         new_settings = {attr: var.get() for attr, var in self.vars.items()}
         new_settings["SELECTED_DISCORD_WEBHOOK"] = self.wh_var.get()
+        new_settings["HEART_INTERVAL_MINUTES"] = self.heart_interval_var.get()
         if self.key in self.app.saved_ports:
             self.app.saved_ports[self.key]["settings"] = new_settings
             config.save_saved_ports(self.app.saved_ports)

@@ -68,7 +68,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")  # โฟลเดอร์เก็�
 PAUSE_SCREENSHOT_DIR = os.path.join(DATA_DIR, "pause_screenshots")  # โฟลเดอร์เก็บภาพตอนหยุดทำงาน
 
 MATCH_THRESHOLD = 0.70         # ความมั่นใจขั้นต่ำ (0-1) ที่จะถือว่า "เจอ" ปุ่ม/ภาพ
-TAP_DELAY_RANGE = (0.3, 0.6)  # หน่วงเวลาสุ่มระหว่างแต่ละครั้งที่แตะ ใน tap_loop ขณะวิ่งเกม (วินาที)
+TAP_DELAY_RANGE = (0.03, 0.16)  # หน่วงเวลาสุ่มระหว่างแต่ละครั้งที่แตะ ใน tap_loop ขณะวิ่งเกม (วินาที)
 RANDOM_TAP_DELAY_RANGE = (0.03, 0.15)  # หน่วงเวลาสุ่มระหว่างการสุ่มแตะขณะรอ over_game (วินาที)
 
 HOLD_DURATION_RANGE = (150, 300)     # ระยะเวลากดค้างแบบสุ่ม (มิลลิวินาที) เพื่อเลียนแบบมนุษย์
@@ -82,7 +82,7 @@ RANDOM_TAP_MAX_Y_PX = 400  # เพดานสูงสุดของแกน
 
 
 # โมเดล Gemini ที่ใช้ (ฟรีเทียร์)
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # state เริ่มต้นทุกครั้งที่กด F6 (ใช้ร่วมกันระหว่าง bot_engine และ flows/flow_config)
 INITIAL_STATE = "start_game"
@@ -102,7 +102,10 @@ DEFAULT_PORT_SETTINGS = {
     "DISCORD_REPORT_ENABLED": True,
     "OCR_SCORE_ENABLED": True,
     "SCHEDULE_ENABLED": False,
-    "SELECTED_DISCORD_WEBHOOK": "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"
+    "SELECTED_DISCORD_WEBHOOK": "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน",
+    # ระบบส่งหัวใจอัตโนมัติ
+    "HEART_AUTO_ENABLED": False,
+    "HEART_INTERVAL_MINUTES": 30,
 }
 
 def get_port_settings(pdata):
@@ -176,7 +179,7 @@ FAST_START_ENTRY_BURST = True               # True = กดรัวทันท
 FAST_START_BOOST_X = 650                    # พิกัด X ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
 FAST_START_BOOST_Y = 340                    # พิกัด Y ปุ่ม Fast Start Boost (อ้างอิงจอ 1280x720)
 
-FAST_START_BOOST_TEMPLATE = "fast_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
+FAST_START_BOOST_TEMPLATE = "fast1_start.png" # ชื่อไฟล์ภาพ template ในโฟลเดอร์ templates/
 FAST_START_BOOST_TAPS = 25                   # จำนวนครั้งที่กดรัว
 FAST_START_BOOST_THRESHOLD = 0.65           # ความแม่นยำขั้นต่ำในการสแกนหาภาพ (0.0-1.0)
 
@@ -211,3 +214,9 @@ DISCORD_REPORT_EVERY_N_RUNS = 10  # ส่งรายงานทุกกี�
 OCR_SCORE_ENABLED = True          # True = เปิดอ่านคะแนน (ใช้ Gemini API), False = ปิด
 OCR_SCORE_DELAY = 1.5             # รอกี่วินาทีหลังจบเกมก่อนจับภาพเพื่ออ่านคะแนน
 SELECTED_DISCORD_WEBHOOK = "[ALL] ส่งทุก Webhook ที่เปิดใช้งาน"  # โปรไฟล์ Webhook ที่เลือกใช้งานเฉพาะสำหรับอินสแตนซ์นี้
+
+# ---------------------------------------------------------------------------
+# ระบบ E: Auto Heart Gifting — ส่ง/รับหัวใจเพื่อนอัตโนมัติ
+# ---------------------------------------------------------------------------
+HEART_AUTO_ENABLED = False        # True = เปิดระบบส่ง/รับหัวใจอัตโนมัติ, False = ปิด
+HEART_INTERVAL_MINUTES = 30       # ส่งหัวใจทุกๆ กี่นาที (เช่น 30 นาที)

@@ -1,32 +1,36 @@
 {
   "127_0_0_1_5559": {
-    "nickname": "127.0.0.1:5559",
+    "nickname": "Tae",
     "device_id": "127.0.0.1:5559",
     "settings": {
       "ENABLE_BOOSTER_BUY": true,
       "ENABLE_FAST_START_BOOST": false,
       "ENABLE_USE_SECOND_COOKIE": true,
+      "ENABLE_RANDOM_TAP_WHILE_WAIT": true,
       "ENABLE_LINE_NOTIFY": false,
-      "ENABLE_RANDOM_TAP_WHILE_WAIT": false,
       "DISCORD_REPORT_ENABLED": true,
       "OCR_SCORE_ENABLED": true,
       "SCHEDULE_ENABLED": false,
-      "SELECTED_DISCORD_WEBHOOK": "Tae"
+      "HEART_AUTO_ENABLED": true,
+      "SELECTED_DISCORD_WEBHOOK": "Tae",
+      "HEART_INTERVAL_MINUTES": 30
     }
   },
   "127_0_0_1_5561": {
-    "nickname": "127.0.0.1:5561",
+    "nickname": "Mook",
     "device_id": "127.0.0.1:5561",
     "settings": {
-      "ENABLE_BOOSTER_BUY": true,
-      "ENABLE_FAST_START_BOOST": false,
+      "ENABLE_BOOSTER_BUY": false,
+      "ENABLE_FAST_START_BOOST": true,
       "ENABLE_USE_SECOND_COOKIE": true,
+      "ENABLE_RANDOM_TAP_WHILE_WAIT": false,
       "ENABLE_LINE_NOTIFY": false,
-      "ENABLE_RANDOM_TAP_WHILE_WAIT": true,
-      "DISCORD_REPORT_ENABLED": false,
-      "OCR_SCORE_ENABLED": false,
+      "DISCORD_REPORT_ENABLED": true,
+      "OCR_SCORE_ENABLED": true,
       "SCHEDULE_ENABLED": false,
-      "SELECTED_DISCORD_WEBHOOK": "[NONE] ปิดใช้งาน"
+      "HEART_AUTO_ENABLED": true,
+      "SELECTED_DISCORD_WEBHOOK": "Mook",
+      "HEART_INTERVAL_MINUTES": 30
     }
   }
 }

@@ -64,16 +64,13 @@ class SettingsWindow(tk.Toplevel):
 
         tab_api = ttk.Frame(notebook, padding=22)
         tab_discord = ttk.Frame(notebook, padding=22)
-        tab_toggles = ttk.Frame(notebook, padding=22)
         tab_test = ttk.Frame(notebook, padding=22)
         notebook.add(tab_api, text="ข้อมูลเชื่อมต่อ")
         notebook.add(tab_discord, text="Discord")
-        notebook.add(tab_toggles, text="พฤติกรรมบอท")
         notebook.add(tab_test, text="ทดสอบการแจ้งเตือน")
 
         self._build_api_tab(tab_api)
         self._build_discord_tab(tab_discord)
-        self._build_toggles_tab(tab_toggles)
         self._build_test_tab(tab_test)
 
     # ------------------------------------------------------------------
@@ -264,71 +261,6 @@ class SettingsWindow(tk.Toplevel):
             messagebox.showinfo("ทดสอบสำเร็จ", f"ส่งข้อความทดสอบไปยัง “{name}” เรียบร้อยแล้ว")
         except Exception as exc:
             messagebox.showerror("ทดสอบไม่สำเร็จ", f"เกิดข้อผิดพลาด: {exc}")
-
-    # ------------------------------------------------------------------
-    # Bot behavior
-    # ------------------------------------------------------------------
-    def _build_toggles_tab(self, parent):
-        scroller = theme.ScrollableFrame(parent, bootstyle="dark", bg=theme.APP_BG)
-        scroller.pack(fill=tk.BOTH, expand=True)
-        content = scroller.body
-
-        theme.make_eyebrow(content, "พฤติกรรมเริ่มต้น", color=theme.ACCENT_CYAN).pack(anchor=tk.W)
-        ttk.Label(content, text="สวิตช์ควบคุมบอท", font=theme.FONT_H2).pack(anchor=tk.W, pady=(4, 3))
-        ttk.Label(
-            content,
-            text="การเปลี่ยนแปลงส่วนนี้เป็นค่าเริ่มต้นของแอป คุณสามารถเขียนทับสำหรับแต่ละพอร์ตได้",
-            font=theme.FONT_SMALL,
-            bootstyle="secondary",
-        ).pack(anchor=tk.W, pady=(0, 14))
-
-        groups = [
-            (
-                "การเล่นเกม",
-                [
-                    ("ENABLE_BOOSTER_BUY", "ซื้อไอเทมเพิ่มพลัง", "เปิดให้บอทเลือกซื้อ Booster เมื่อเหมาะสม"),
-                    ("ENABLE_FAST_START_BOOST", "เร่งเริ่มต้น", "กดเร็วขึ้นในช่วงเริ่มต้นของการวิ่ง"),
-                    ("ENABLE_USE_SECOND_COOKIE", "ใช้คุกกี้ตัวที่สอง", "ใช้ความสามารถเสริมเมื่อระบบพบปุ่มที่รองรับ"),
-                    ("ENABLE_RANDOM_TAP_WHILE_WAIT", "สุ่มกดระหว่างรอ", "ช่วยจัดการช่วงที่เกมอยู่ในสถานะ over_game"),
-                ],
-            ),
-            (
-                "รายงานและระบบอัตโนมัติ",
-                [
-                    ("ENABLE_LINE_NOTIFY", "แจ้งเตือน LINE", "ส่งข้อความเมื่อเกิดเหตุการณ์สำคัญ"),
-                    ("DISCORD_REPORT_ENABLED", "รายงาน Discord", "ส่งผลการทำงานไปยัง Webhook ที่เลือก"),
-                    ("OCR_SCORE_ENABLED", "อ่านคะแนนด้วย OCR", "ใช้ Gemini เพื่อดึงคะแนนจากหน้าจอ"),
-                    ("SCHEDULE_ENABLED", "ตารางเวลาทำงาน", "เปิดใช้พฤติกรรมตามกำหนดการ"),
-                ],
-            ),
-        ]
-        for heading, toggles in groups:
-            card = theme.GlassCard(content, accent=theme.BORDER, padding=14)
-            card.pack(fill=tk.X, pady=5)
-            body = card.body
-            ttk.Label(body, text=heading, font=theme.FONT_H3).pack(anchor=tk.W, pady=(0, 6))
-            for attr, label, hint in toggles:
-                self._toggle_row(body, attr, label, hint)
-
-    def _toggle_row(self, parent, attr, label, hint):
-        row = ttk.Frame(parent, padding=(0, 7))
-        row.pack(fill=tk.X)
-        variable = tk.BooleanVar(value=bool(getattr(config, attr, False)))
-        ttk.Checkbutton(
-            row,
-            variable=variable,
-            bootstyle="success-round-toggle",
-            command=lambda key=attr, var=variable: self._apply_toggle(key, var.get()),
-        ).pack(side=tk.LEFT, padx=(0, 9))
-        copy = ttk.Frame(row)
-        copy.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(copy, text=label, font=theme.FONT_BODY_BOLD).pack(anchor=tk.W)
-        ttk.Label(copy, text=hint, font=theme.FONT_SMALL, bootstyle="secondary").pack(anchor=tk.W, pady=(1, 0))
-
-    def _apply_toggle(self, key, value):
-        """อัปเดตค่า runtime และบันทึกลง .env เพื่อให้คงอยู่หลัง restart"""
-        setattr(config, key, value)
-        save_secret(key.lower(), str(value))
 
     # ------------------------------------------------------------------
     # Notification tests
