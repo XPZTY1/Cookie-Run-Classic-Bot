@@ -35,7 +35,8 @@ def find_adb_path():
     หา path ของ adb.exe ตามลำดับ:
     1. ค่าที่ตั้งไว้ใน .env (ADB_PATH)
     2. ค้นหาอัตโนมัติจาก PATH ของระบบ
-    3. fallback: path เดิมของผู้พัฒนา (อาจไม่ตรงกับเครื่องคุณ)
+    3. ค้นหาในตำแหน่งติดตั้งทั่วไปของ MuMu / LDPlayer
+    4. fallback: path adb
     """
     if SECRET_ADB_PATH and os.path.exists(SECRET_ADB_PATH):
         return SECRET_ADB_PATH
@@ -45,7 +46,19 @@ def find_adb_path():
     if found:
         return found
 
-    return r"D:\MUMU\MuMuPlayerGlobal\nx_main\adb.exe"
+    common_paths = [
+        r"C:\Program Files\Netease\MuMuPlayerGlobal-12.0\shell\adb.exe",
+        r"C:\Program Files\Netease\MuMuPlayer-12.0\shell\adb.exe",
+        r"D:\MUMU\MuMuPlayerGlobal\nx_main\adb.exe",
+        r"C:\Microvirt\MEmu\adb.exe",
+        r"C:\LDPlayer\LDPlayer9\adb.exe",
+        r"D:\LDPlayer\LDPlayer9\adb.exe",
+    ]
+    for p in common_paths:
+        if os.path.exists(p):
+            return p
+
+    return "adb"
 
 
 ADB_PATH = find_adb_path()
@@ -56,7 +69,8 @@ PAUSE_SCREENSHOT_DIR = os.path.join(DATA_DIR, "pause_screenshots")  # โฟล�
 
 MATCH_THRESHOLD = 0.70         # ความมั่นใจขั้นต่ำ (0-1) ที่จะถือว่า "เจอ" ปุ่ม/ภาพ
 TAP_DELAY_RANGE = (0.3, 0.6)  # หน่วงเวลาสุ่มระหว่างแต่ละครั้งที่แตะ ใน tap_loop ขณะวิ่งเกม (วินาที)
-RANDOM_TAP_DELAY_RANGE = (0.3, 0.15)  # หน่วงเวลาสุ่มระหว่างการสุ่มแตะขณะรอ over_game (วินาที)
+RANDOM_TAP_DELAY_RANGE = (0.03, 0.15)  # หน่วงเวลาสุ่มระหว่างการสุ่มแตะขณะรอ over_game (วินาที)
+
 HOLD_DURATION_RANGE = (150, 300)     # ระยะเวลากดค้างแบบสุ่ม (มิลลิวินาที) เพื่อเลียนแบบมนุษย์
 HOLD_CHANCE = 0.6                   # โอกาส (0.0-1.0) ที่แต่ละครั้งจะเป็น "กดค้าง" แทน tap ธรรมดา
 
@@ -68,7 +82,7 @@ RANDOM_TAP_MAX_Y_PX = 400  # เพดานสูงสุดของแกน
 
 
 # โมเดล Gemini ที่ใช้ (ฟรีเทียร์)
-GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_MODEL = "gemini-2.0-flash-lite"
 
 # state เริ่มต้นทุกครั้งที่กด F6 (ใช้ร่วมกันระหว่าง bot_engine และ flows/flow_config)
 INITIAL_STATE = "start_game"

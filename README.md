@@ -60,7 +60,6 @@ cookierun_bot/
 ├── .env.example                 # แม่แบบไฟล์ .env
 ├── .env                         # ไฟล์เก็บ API key และ Token ส่วนตัว (ห้ามแชร์)
 ├── adb_client.py                # คุยกับ MuMu/LDPlayer ผ่าน ADB (screenshot, tap, swipe_curve)
-├── template_matcher.py          # find_template()
 ├── requirements.txt             # รายชื่อ Python Packages ที่จำเป็น
 ├── run_hidden.bat               # Launcher สคริปต์แบบเดี่ยว
 ├── run_multi_instance.bat       # Launcher สคริปต์สำหรับเปิดหลายจอ (Multi-Instance)

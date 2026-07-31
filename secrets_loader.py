@@ -1,7 +1,12 @@
 import json
 import os
+import sys
 
-from config import BASE_DIR
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 # ---------------------------------------------------------------------------
 # โหลดค่าลับ (LINE token, Gemini API key, Discord webhook, ADB device) จาก .env

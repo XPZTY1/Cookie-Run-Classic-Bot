@@ -1,0 +1,47 @@
+{
+  "⭐ ฟาร์มเงิน": {
+    "booster": true,
+    "fast_start": false,
+    "use_second": true,
+    "line": true,
+    "swipe_curve": true,
+    "schedule": false,
+    "discord": true,
+    "ocr_score": true,
+    "speed": "50ms (รัวเร็ว)"
+  },
+  "⭐ ฟาร์มกล่องด่าน 6": {
+    "booster": false,
+    "fast_start": true,
+    "use_second": true,
+    "line": true,
+    "swipe_curve": false,
+    "schedule": false,
+    "discord": true,
+    "ocr_score": true,
+    "speed": "30ms (รัวมาก)"
+  },
+  "⭐ ฟาร์มกล่องด่าน 5": {
+    "booster": true,
+    "fast_start": true,
+    "use_second": true,
+    "line": true,
+    "swipe_curve": false,
+    "schedule": false,
+    "discord": true,
+    "ocr_score": true,
+    "speed": "50ms (รัวเร็ว)"
+  },
+  "⭐ ฟาร์มกล่องด่าน 7": {
+    "booster": true,
+    "fast_start": false,
+    "use_second": true,
+    "line": true,
+    "swipe_curve": false,
+    "schedule": false,
+    "discord": false,
+    "ocr_score": false,
+    "random_tap": false,
+    "speed": "50ms (รัวเร็ว)"
+  }
+}

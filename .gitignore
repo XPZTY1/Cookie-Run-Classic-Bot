@@ -1,19 +1,75 @@
-# --- ไฟล์ลับ / ข้อมูลส่วนตัว ---
+# ============================================================
+# .gitignore — Cookie Run Classic Bot
+# ============================================================
+
+# --- ไฟล์ลับ / ข้อมูลส่วนตัว (Secrets & Credentials) ---
 .env
 secrets.json
-user_profiles.json
-bot_stats.json
 
-# --- Python cache ---
+# --- ข้อมูลที่บอทสร้างขึ้นระหว่างรัน (Runtime Data) ---
+# bot_stats ไม่ขึ้น Git (สร้างใหม่ทุกครั้งที่รัน, ใหญ่มาก)
+data/bot_stats.json
+data/bot_stats_*.json
+# Screenshots ตอน pause ไม่ขึ้น Git (binary ขนาดใหญ่)
+data/pause_screenshots/
+
+# --- Python cache & bytecode ---
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.pyo
+*.pyd
+.Python
 
-# --- Editor / OS junk ---
+# --- Virtual Environment ---
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Distribution / Build artifacts ---
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# --- Testing & Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+
+# --- Editor / IDE ---
 .vscode/
 .idea/
-.DS_Store
-Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# --- ไฟล์ที่บอทสร้างขึ้นเองระหว่างรัน ---
-pause_screenshots/
+# --- OS junk ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --- Log files ---
+*.log
+logs/
+
+# --- Temporary files ---
+*.tmp
+*.temp
+*.bak
+*.swp
+*~

@@ -44,7 +44,10 @@ GEMINI_MINIGAME_PROMPT = (
     "บอกมาเป็นแบบนี้ เช่น (1,2),(2,1)"
 )
 
+import secrets_loader
+
 _gemini_client = None
+_gemini_client_key = None
 
 
 def get_gemini_client():
@@ -52,9 +55,15 @@ def get_gemini_client():
     สร้าง (หรือคืนค่า) genai.Client() แบบ lazy-load
     ใช้ SDK ทางการแทนการยิง REST เอง เพราะ SDK จัดการรูปแบบ API key ให้อัตโนมัติ
     """
-    global _gemini_client
-    if _gemini_client is None and GEMINI_API_KEY:
-        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+    global _gemini_client, _gemini_client_key
+    api_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or getattr(secrets_loader, "GEMINI_API_KEY", "")
+    )
+    if api_key and (_gemini_client is None or _gemini_client_key != api_key):
+        _gemini_client = genai.Client(api_key=api_key)
+        _gemini_client_key = api_key
     return _gemini_client
 
 
@@ -63,16 +72,21 @@ def _describe_image_bytes_with_gemini(image_bytes, prompt=GEMINI_DESCRIBE_PROMPT
     ฟังก์ชันกลาง: ส่ง image bytes (PNG) ให้ Gemini บรรยาย พร้อม retry ตอนเจอ 503 และ fallback รุ่นโมเดล
     คืนค่าเป็น string คำอธิบาย หรือ None ถ้าเรียกไม่สำเร็จ
     """
-    if not GEMINI_API_KEY:
-        _safe_print("[Gemini] ยังไม่ได้ตั้งค่า gemini_api_key ใน secrets.json — ข้ามการบรรยายภาพ")
+    api_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or getattr(secrets_loader, "GEMINI_API_KEY", "")
+    )
+    if not api_key:
+        _safe_print("[Gemini] ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน .env — ข้ามการบรรยายภาพ")
         return None
 
-    if not GEMINI_API_KEY.startswith("AIzaSy"):
-        _safe_print("[Gemini] ⚠️ เตือน: gemini_api_key ใน secrets.json ดูเหมือนไม่ใช่ API Key จาก Google AI Studio (คีย์ที่ถูกต้องมักขึ้นต้นด้วย 'AIzaSy...')")
+    if not api_key.startswith("AIzaSy"):
+        _safe_print("[Gemini] ⚠️ เตือน: GEMINI_API_KEY ใน .env ดูเหมือนไม่ใช่ API Key จาก Google AI Studio (คีย์ที่ถูกต้องมักขึ้นต้นด้วย 'AIzaSy...')")
 
     client = get_gemini_client()
     if client is None:
-        _safe_print("[Gemini] สร้าง client ไม่สำเร็จ ตรวจสอบ gemini_api_key ใน secrets.json")
+        _safe_print("[Gemini] สร้าง client ไม่สำเร็จ ตรวจสอบ GEMINI_API_KEY ใน .env")
         return None
 
     # รายชื่อโมเดลที่จะลองใช้งานเรียงตามลำดับความสำคัญ
@@ -105,7 +119,7 @@ def _describe_image_bytes_with_gemini(image_bytes, prompt=GEMINI_DESCRIBE_PROMPT
 
                     # Authentication failed
                     if any(k in err_str.lower() for k in ["unauthenticated", "invalid authentication credentials", "access_token_type_unsupported"]):
-                        _safe_print("[Gemini] ❌ ไม่สามารถยืนยันตัวตนได้! กรุณาตรวจสอบ gemini_api_key ใน secrets.json (ต้องเป็นคีย์จาก https://aistudio.google.com/app/apikey ขึ้นต้นด้วย AIzaSy...)")
+                        _safe_print("[Gemini] ❌ ไม่สามารถยืนยันตัวตนได้! กรุณาตรวจสอบ GEMINI_API_KEY ใน .env (ต้องเป็นคีย์จาก https://aistudio.google.com/app/apikey ขึ้นต้นด้วย AIzaSy...)")
                         return None
 
                     # Quota หมด

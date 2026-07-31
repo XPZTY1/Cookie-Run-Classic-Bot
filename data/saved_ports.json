@@ -23,10 +23,10 @@
       "ENABLE_USE_SECOND_COOKIE": true,
       "ENABLE_LINE_NOTIFY": false,
       "ENABLE_RANDOM_TAP_WHILE_WAIT": true,
-      "DISCORD_REPORT_ENABLED": true,
-      "OCR_SCORE_ENABLED": true,
+      "DISCORD_REPORT_ENABLED": false,
+      "OCR_SCORE_ENABLED": false,
       "SCHEDULE_ENABLED": false,
-      "SELECTED_DISCORD_WEBHOOK": "Mook"
+      "SELECTED_DISCORD_WEBHOOK": "[NONE] ปิดใช้งาน"
     }
   }
 }

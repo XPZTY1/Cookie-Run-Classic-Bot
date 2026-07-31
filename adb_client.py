@@ -146,9 +146,16 @@ def get_screen_size(device_id=None):
 
     output = result.stdout.decode(errors="ignore")
     try:
-        size_str = output.strip().split(":")[-1].strip()
-        w, h = size_str.split("x")
-        _screen_size_cache[target] = (int(w), int(h))
+        import re
+        matches = re.findall(r"(\d+)\s*x\s*(\d+)", output)
+        if matches:
+            w, h = map(int, matches[-1])
+            # ปรับเป็นแนวนอนถ้าเกมเป็นแนวนอน
+            if w < h:
+                w, h = h, w
+            _screen_size_cache[target] = (w, h)
+        else:
+            _screen_size_cache[target] = (1280, 720)
     except Exception:
         _screen_size_cache[target] = (1280, 720)
 
@@ -216,14 +223,11 @@ def adb_long_press(x, y, duration_ms=150, device_id=None):
 
 def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180, device_id=None):
     """
-    ลากนิ้วจาก (x1, y1) ไปยัง (x2, y2) แบบเส้นโค้ง Bezier (Quadratic Bezier Curve)
-    เพื่อเลียนแบบวิถีการลากนิ้วของมนุษย์จริงบนหน้าจอสัมผัส
+    ลากนิ้วจาก (x1, y1) ไปยัง (x2, y2) แบบเส้นโค้ง Bezier
+    เพื่อเลียนแบบวิถีการลากนิ้วของมนุษย์จริงบนหน้าจอสัมผัสโดยไม่เกิดอาการกระตุก
     """
     import random
     import math
-
-    mx = (x1 + x2) / 2.0
-    my = (y1 + y2) / 2.0
 
     dx = x2 - x1
     dy = y2 - y1
@@ -233,30 +237,20 @@ def adb_swipe_curve(x1, y1, x2, y2, curve_strength=40, steps=6, duration_ms=180,
         adb_tap(x1, y1, device_id=device_id)
         return
 
+    mx = (x1 + x2) / 2.0
+    my = (y1 + y2) / 2.0
+
     side = random.choice([-1, 1])
     offset = random.uniform(curve_strength * 0.5, curve_strength)
     nx = -dy / dist * offset * side
     ny = dx / dist * offset * side
 
-    cx = mx + nx
-    cy = my + ny
+    cx = int(mx + nx)
+    cy = int(my + ny)
 
-    points = []
-    for i in range(steps + 1):
-        t = i / float(steps)
-        one_minus_t = 1.0 - t
-        px = (one_minus_t ** 2) * x1 + 2 * one_minus_t * t * cx + (t ** 2) * x2
-        py = (one_minus_t ** 2) * y1 + 2 * one_minus_t * t * cy + (t ** 2) * y2
-        points.append((int(px), int(py)))
-
-    step_duration = max(10, int(duration_ms / max(1, steps)))
-    swipe_cmds = []
-    for i in range(len(points) - 1):
-        p_start = points[i]
-        p_end = points[i + 1]
-        swipe_cmds.append(f"input swipe {p_start[0]} {p_start[1]} {p_end[0]} {p_end[1]} {step_duration}")
-
-    full_cmd = " && ".join(swipe_cmds)
+    half_duration = max(20, int(duration_ms / 2))
+    full_cmd = f"input swipe {int(x1)} {int(y1)} {cx} {cy} {half_duration} && input swipe {cx} {cy} {int(x2)} {int(y2)} {half_duration}"
     adb_run(["shell", full_cmd], timeout=5, device_id=device_id)
+
 
 

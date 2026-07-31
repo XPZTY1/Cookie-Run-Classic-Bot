@@ -1,7 +1,8 @@
+import os
 import requests  # pip install requests  (ยังใช้สำหรับ LINE Messaging API)
 
 import config
-from secrets_loader import LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID
+import secrets_loader
 
 # ---------------------------------------------------------------------------
 # LINE Messaging API: ส่งข้อความแจ้งเตือน
@@ -16,21 +17,23 @@ def send_line_message(text):
     if not getattr(config, "ENABLE_LINE_NOTIFY", True):
         return
 
-    if not LINE_CHANNEL_ACCESS_TOKEN:
+    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN") or getattr(secrets_loader, "LINE_CHANNEL_ACCESS_TOKEN", "")
+    user_id = os.environ.get("LINE_USER_ID") or getattr(secrets_loader, "LINE_USER_ID", "")
 
-        print("[LINE] ยังไม่ได้ตั้งค่า line_channel_access_token ใน secrets.json — ข้ามการแจ้งเตือน")
+    if not token:
+        print("[LINE] ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN ใน .env — ข้ามการแจ้งเตือน")
         return
-    if not LINE_USER_ID:
-        print("[LINE] ยังไม่ได้ตั้งค่า line_user_id ใน secrets.json — ข้ามการแจ้งเตือน")
+    if not user_id:
+        print("[LINE] ยังไม่ได้ตั้งค่า LINE_USER_ID ใน .env — ข้ามการแจ้งเตือน")
         return
 
     url = "https://api.line.me/v2/bot/message/push"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {token}",
     }
     payload = {
-        "to": LINE_USER_ID,
+        "to": user_id,
         "messages": [{"type": "text", "text": text}],
     }
 
@@ -42,3 +45,4 @@ def send_line_message(text):
             print(f"[LINE] ส่งข้อความไม่สำเร็จ ({resp.status_code}): {resp.text}")
     except Exception as e:
         print(f"[LINE] เกิดข้อผิดพลาดตอนส่งข้อความ: {e}")
+

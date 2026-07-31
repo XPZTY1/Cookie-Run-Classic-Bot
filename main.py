@@ -99,7 +99,8 @@ def main():
             keyboard.add_hotkey("F7", stop_bot)
             keyboard.add_hotkey("F9", quit_program)
         except Exception as e:
-            print(f"⚠️ ไม่สามารถตั้งค่า Global Hotkeys ได้: {e}")
+            print(f"⚠️ ไม่สามารถตั้งค่า Global Hotkeys (F6/F7/F9) ได้: {e}")
+            print("   💡 คำแนะนำ: หากต้องการใช้ปุ่ม F6/F7/F9 ควบคุม ให้เปิด PowerShell/Command Prompt ด้วยสิทธิ์ Administrator (Run as Administrator)")
     else:
         print("[Multi-Instance] ปิดการทำงาน Global Hotkeys (F6/F7/F9) เพื่อป้องกันปุ่มตีกันระหว่างหลายหน้าต่าง")
 

@@ -1,5 +1,5 @@
 @echo off
-cd /d "F:\CookieRunBot\Cookie Run Classic Bot"
+cd /d "%~dp0"
 
 REM ================================================================
 REM  Cookie Run Classic Auto Bot — Launcher
@@ -17,4 +17,4 @@ REM  โปรดใช้ --no-hotkey เสมอเมื่อเปิด�
 REM  เพื่อป้องกัน F6/F7/F9 ตีกันระหว่าง instance
 REM ================================================================
 
-python.exe main.py
+python.exe main.py %*

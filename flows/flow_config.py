@@ -6,7 +6,7 @@ FLOW = {
         "template": "start_button.png",
         "action": "click",
         "delay": 3,
-        "entry_delay": 5,  # รอ 2 วินาทีก่อนเริ่มกดปุ่มเมื่อกลับมาหน้าแรก เพื่อให้เกมโหลด UI เสร็จ
+        "entry_delay": 8,  # รอ 2 วินาทีก่อนเริ่มกดปุ่มเมื่อกลับมาหน้าแรก เพื่อให้เกมโหลด UI เสร็จ
         "next_state": "item_boots",
     },
 
