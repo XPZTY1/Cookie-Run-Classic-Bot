@@ -1,7 +1,9 @@
 import sys
-from ui.app import CookieBotGUI, run_gui
+import os
 
-__all__ = ["CookieBotGUI", "run_gui"]
+# เพิ่ม root directory ลงใน sys.path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 if __name__ == "__main__":
-    run_gui()
+    from src.gui import main
+    main()

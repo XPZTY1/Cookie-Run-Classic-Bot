@@ -1,0 +1,125 @@
+import os
+import sys
+import io
+
+# บังคับ stdout/stderr ให้ใช้ UTF-8 เสมอ ป้องกัน UnicodeEncodeError บน Windows Terminal
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'buffer'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+import keyboard
+
+import src.config.settings as config
+from src.config.settings import DEVICE_ID, TEMPLATE_DIR
+from src.core.adb_client import adb_connect, grab_screen
+from src.notifiers.line_notifier import send_line_message
+from src.notifiers.gemini_vision import describe_screen_with_gemini
+from src.tools.capture_mode import capture_mode
+from src.tools.debug_mode import debug_mode
+from src.core.bot_engine import bot_loop, start_bot, stop_bot, quit_program
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main():
+    # ตรวจสอบพารามิเตอร์ --port หรือ --device บน Command Line
+    target_device = None
+    if "--port" in sys.argv:
+        idx = sys.argv.index("--port")
+        if len(sys.argv) > idx + 1:
+            port_val = sys.argv[idx + 1].strip()
+            target_device = f"127.0.0.1:{port_val}" if ":" not in port_val else port_val
+    elif "--device" in sys.argv:
+        idx = sys.argv.index("--device")
+        if len(sys.argv) > idx + 1:
+            target_device = sys.argv[idx + 1].strip()
+
+    if target_device:
+        config.DEVICE_ID = target_device
+        print(f"[Device] ระบุ Device/Port จาก Command Line: {target_device}")
+
+    # หากรันโหมดพิเศษที่ไม่ใช่ GUI (เช่น --capture, --debug, --no-gui) ให้ลองเชื่อมต่อ ADB ก่อน
+    is_cli_mode = any(arg in sys.argv for arg in ["--capture", "--debug", "--test-line", "--test-discord", "--test-gemini", "--no-gui"])
+    if is_cli_mode or target_device:
+        if not adb_connect(target_device):
+            print("!! ไม่สามารถเชื่อมต่อ Emulator ผ่าน ADB ได้ กรุณาตรวจสอบพอร์ตก่อนใช้งานต่อ")
+            if is_cli_mode:
+                return
+
+    if "--capture" in sys.argv:
+        capture_mode()
+        return
+
+    if "--debug" in sys.argv:
+        idx = sys.argv.index("--debug")
+        template_arg = sys.argv[idx + 1] if len(sys.argv) > idx + 1 else None
+        debug_mode(template_arg)
+        return
+
+    if "--test-line" in sys.argv:
+        send_line_message("🔔 ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot")
+        return
+
+    if "--test-discord" in sys.argv:
+        from src.notifiers.discord_notifier import send_discord_report
+        print("[Discord] กำลังทดสอบส่งข้อความแจ้งเตือน...")
+        send_discord_report("🔔 **ทดสอบการแจ้งเตือนจาก Cookie Run Auto Bot ผ่าน Discord Webhook** ✅")
+        return
+
+    if "--test-gemini" in sys.argv:
+        print("[Gemini] กำลังทดสอบ... จับภาพหน้าจอจาก Emulator แล้วส่งให้ Gemini บรรยาย")
+        screen = grab_screen()
+        if screen is None:
+            print("!! จับภาพหน้าจอไม่สำเร็จ ตรวจสอบการเชื่อมต่อ ADB ก่อน")
+            return
+
+        result = describe_screen_with_gemini(screen)
+        if result:
+            print("[Gemini] เชื่อมต่อสำเร็จ ✅")
+            print("[Gemini] คำตอบที่ได้:")
+            print(result)
+        else:
+            print("[Gemini] เชื่อมต่อไม่สำเร็จ ❌ ดู error ด้านบน (เช่น key ผิด, โควตาหมด, network)")
+        return
+
+    if not os.path.isdir(TEMPLATE_DIR) or not os.listdir(TEMPLATE_DIR):
+        print("!! ยังไม่มีไฟล์ template ใน templates/")
+        print("!! รันโหมด --capture ก่อนเพื่อสร้างรูป template ของปุ่มต่างๆ")
+        print("   ตัวอย่าง: python main.py --capture")
+        return
+
+    # ลงทะเบียน Hotkeys เฉพาะเมื่อไม่ได้ระบุ --no-hotkey (ป้องกันปุ่ม F6/F7/F9 ตีกันเมื่อเปิดหลายจอ)
+    use_hotkey = "--no-hotkey" not in sys.argv and "--no-hotkeys" not in sys.argv
+    if use_hotkey:
+        try:
+            keyboard.add_hotkey("F6", start_bot)
+            keyboard.add_hotkey("F7", stop_bot)
+            keyboard.add_hotkey("F9", quit_program)
+        except Exception as e:
+            print(f"⚠️ ไม่สามารถตั้งค่า Global Hotkeys (F6/F7/F9) ได้: {e}")
+            print("   💡 คำแนะนำ: หากต้องการใช้ปุ่ม F6/F7/F9 ควบคุม ให้เปิด PowerShell/Command Prompt ด้วยสิทธิ์ Administrator (Run as Administrator)")
+    else:
+        print("[Multi-Instance] ปิดการทำงาน Global Hotkeys (F6/F7/F9) เพื่อป้องกันปุ่มตีกันระหว่างหลายหน้าต่าง")
+
+    # หากผู้ใช้ระบุ --no-gui จะรันบน console แบบเดิม
+    if "--no-gui" in sys.argv:
+        print("=" * 50)
+        print("Cookie Run Classic Auto Bot (Console Mode)")
+        print("Device:", getattr(config, "DEVICE_ID", DEVICE_ID))
+        if use_hotkey:
+            print("F6 = เริ่มออโต้ | F7 = หยุดออโต้ | F9 = ออกจากโปรแกรม")
+        else:
+            print("(Global Hotkeys ถูกปิดใช้งาน)")
+        print("=" * 50)
+        bot_loop()
+    else:
+        # เปิดรัน GUI Mode เป็น Default
+        import src.gui as gui
+        gui.run_gui()
+
+
+if __name__ == "__main__":
+    main()
