@@ -12,6 +12,8 @@ data/bot_stats.json
 data/bot_stats_*.json
 # Screenshots ตอน pause ไม่ขึ้น Git (binary ขนาดใหญ่)
 data/pause_screenshots/
+# พอร์ตที่บันทึกไว้ (เป็นข้อมูลเฉพาะเครื่อง/ผู้ใช้)
+data/saved_ports.json
 
 # --- Python cache & bytecode ---
 __pycache__/
