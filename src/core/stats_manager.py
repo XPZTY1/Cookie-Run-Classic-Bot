@@ -18,6 +18,7 @@ class StatsManager:
             "last_score": 0,
             "last_coins": 0,
             "last_boxes": 0,
+            "relic_exchanges": 0,
             "scores_history": [],
             "coins_history": [],
             "boxes_history": []
@@ -29,6 +30,7 @@ class StatsManager:
         self.session_stats["successful_runs"] = 0
         self.session_stats["watchdog_resets"] = 0
         self.session_stats["adb_disconnects"] = 0
+        self.session_stats["relic_exchanges"] = 0
         self.session_stats["scores_history"].clear()
         self.session_stats["coins_history"].clear()
         self.session_stats["boxes_history"].clear()
@@ -114,6 +116,7 @@ class StatsManager:
                 "boxes": sum(self.session_stats["boxes_history"]),
                 "watchdog_resets": self.session_stats["watchdog_resets"],
                 "adb_disconnects": self.session_stats["adb_disconnects"],
+                "relic_exchanges": self.session_stats.get("relic_exchanges", 0),
                 "duration_seconds": elapsed
             }
             global_stats["history"].append(history_entry)

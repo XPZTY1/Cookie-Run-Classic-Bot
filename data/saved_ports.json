@@ -12,8 +12,10 @@
       "OCR_SCORE_ENABLED": true,
       "SCHEDULE_ENABLED": false,
       "HEART_AUTO_ENABLED": true,
+      "RELIC_EXCHANGE_ENABLED": true,
       "SELECTED_DISCORD_WEBHOOK": "Tae",
-      "HEART_INTERVAL_MINUTES": 10
+      "HEART_INTERVAL_MINUTES": 10,
+      "RELIC_EXCHANGE_EVERY_N_RUNS": 10
     }
   },
   "127_0_0_1_5561": {
@@ -29,8 +31,10 @@
       "OCR_SCORE_ENABLED": true,
       "SCHEDULE_ENABLED": false,
       "HEART_AUTO_ENABLED": true,
+      "RELIC_EXCHANGE_ENABLED": true,
       "SELECTED_DISCORD_WEBHOOK": "Mook",
-      "HEART_INTERVAL_MINUTES": 30
+      "HEART_INTERVAL_MINUTES": 30,
+      "RELIC_EXCHANGE_EVERY_N_RUNS": 10
     }
   }
 }

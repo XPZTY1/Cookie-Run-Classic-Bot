@@ -71,7 +71,7 @@ MATCH_THRESHOLD = 0.70         # ความมั่นใจขั้นต�
 TAP_DELAY_RANGE = (0.03, 0.16)  # หน่วงเวลาสุ่มระหว่างแต่ละครั้งที่แตะ ใน tap_loop ขณะวิ่งเกม (วินาที)
 RANDOM_TAP_DELAY_RANGE = (0.03, 0.15)  # หน่วงเวลาสุ่มระหว่างการสุ่มแตะขณะรอ over_game (วินาที)
 
-HOLD_DURATION_RANGE = (150, 300)     # ระยะเวลากดค้างแบบสุ่ม (มิลลิวินาที) เพื่อเลียนแบบมนุษย์
+HOLD_DURATION_RANGE = (150, 200)     # ระยะเวลากดค้างแบบสุ่ม (มิลลิวินาที) เพื่อเลียนแบบมนุษย์
 HOLD_CHANCE = 0.6                   # โอกาส (0.0-1.0) ที่แต่ละครั้งจะเป็น "กดค้าง" แทน tap ธรรมดา
 
 # ขอบเขต (สัดส่วนของหน้าจอ) ที่อนุญาตให้สุ่มแตะระหว่างรอ เพื่อไม่ให้แตะโดนขอบจอ/แถบระบบ/ปุ่มล่างจอ
@@ -82,7 +82,7 @@ RANDOM_TAP_MAX_Y_PX = 400  # เพดานสูงสุดของแกน
 
 
 # โมเดล Gemini ที่ใช้ (ฟรีเทียร์)
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # state เริ่มต้นทุกครั้งที่กด F6 (ใช้ร่วมกันระหว่าง bot_engine และ flows/flow_config)
 INITIAL_STATE = "start_game"
@@ -106,6 +106,9 @@ DEFAULT_PORT_SETTINGS = {
     # ระบบส่งหัวใจอัตโนมัติ
     "HEART_AUTO_ENABLED": False,
     "HEART_INTERVAL_MINUTES": 30,
+    # ระบบแลกเปลี่ยน Relic อัตโนมัติ
+    "RELIC_EXCHANGE_ENABLED": False,
+    "RELIC_EXCHANGE_EVERY_N_RUNS": 10,
 }
 
 def get_port_settings(pdata):
@@ -220,3 +223,9 @@ SELECTED_DISCORD_WEBHOOK = "[ALL] ส่งทุก Webhook ที่เปิ�
 # ---------------------------------------------------------------------------
 HEART_AUTO_ENABLED = False        # True = เปิดระบบส่ง/รับหัวใจอัตโนมัติ, False = ปิด
 HEART_INTERVAL_MINUTES = 30       # ส่งหัวใจทุกๆ กี่นาที (เช่น 30 นาที)
+
+# ---------------------------------------------------------------------------
+# ระบบ F: Auto Relic Exchange — แลกเปลี่ยน Relic อัตโนมัติทุกๆ N รอบ
+# ---------------------------------------------------------------------------
+RELIC_EXCHANGE_ENABLED = False    # True = เปิดระบบแลก Relic อัตโนมัติ, False = ปิด
+RELIC_EXCHANGE_EVERY_N_RUNS = 10  # แลก Relic ทุกๆ กี่รอบที่เล่นผ่าน (เช่น 10 รอบ)

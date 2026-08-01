@@ -43,6 +43,7 @@ from src.core.stats_manager import StatsManager
 from src.core.scheduler import SchedulerManager
 from src.core.recovery import RecoveryManager
 from src.core.heart_gifting import HeartGiftingManager
+from src.core.relic_exchange import RelicExchangeManager
 
 sys_stdout_write = lambda s: sys.stdout.write(s)
 
@@ -71,6 +72,7 @@ class BotInstance:
         self.sched_mgr = SchedulerManager(self)
         self.recov_mgr = RecoveryManager(self)
         self.heart_mgr = HeartGiftingManager(self)
+        self.relic_mgr = RelicExchangeManager(self)
 
         self._interrupt_last_click = {}
         self.adb_lock = threading.Lock()
@@ -356,8 +358,8 @@ class BotInstance:
                 time.sleep(0.1)
 
     def check_interrupts(self, screen):
-        # ถ้ากำลังอยู่ใน Heart Gifting Flow ให้หยุด INTERRUPTS ทั้งหมดชั่วคราว
-        if self.heart_mgr.heart_gifting_active:
+        # ถ้ากำลังอยู่ใน Heart Gifting หรือ Relic Exchange Flow ให้หยุด INTERRUPTS ทั้งหมดชั่วคราว
+        if self.heart_mgr.heart_gifting_active or self.relic_mgr.relic_exchange_active:
             return None
 
         now = time.time()
@@ -413,8 +415,8 @@ class BotInstance:
         self.log_debug("[interrupt_watcher] เริ่มทำงาน (background)")
         while self.running and not self._interrupt_thread_stop:
             try:
-                # ถ้ากำลังอยู่ใน Heart Gifting Flow ให้หยุด watcher ชั่วคราว
-                if self.heart_mgr.heart_gifting_active:
+                # ถ้ากำลังอยู่ใน Heart Gifting หรือ Relic Exchange Flow ให้หยุด watcher ชั่วคราว
+                if self.heart_mgr.heart_gifting_active or self.relic_mgr.relic_exchange_active:
                     time.sleep(0.2)
                     continue
 
@@ -591,6 +593,13 @@ class BotInstance:
                             # หลังส่งหัวใจเสร็จ ให้วนลูปกลับมาเช็กสถานะใหม่
                             continue
 
+                        # ตรวจสอบ Relic Exchange: ถ้าครบรอบที่กำหนดและอยู่สถานะ start_game
+                        # ทำก่อนกด start เพื่อไม่ให้เสียรอบฟาร์ม
+                        if self.current_state == "start_game" and self.relic_mgr.check_due():
+                            self.log_info("🏛️ [Relic] ถึงรอบเช็ก Relic! จะตรวจก่อนเริ่มเกมรอบถัดไป...")
+                            self.relic_mgr.run_relic_flow()
+                            continue
+
                         if self.current_state == "start_game":
                             self.log_info("🍪 คลิกเริ่มรันรอบใหม่...")
                         elif self.current_state == "item_boots":
@@ -712,6 +721,8 @@ class BotInstance:
                                 self.stats_mgr.session_stats["successful_runs"] += 1
                                 self.stats_mgr.session_stats["total_runs"] += 1
                                 self.log_info(f"🏆 เล่นผ่านสำเร็จแล้วรอบที่ {self.session_stats['successful_runs']}!")
+                                # เพิ่มตัวนับรอบให้ระบบแลก Relic (จะถูก reset เฉพาะตอนแลกสำเร็จ)
+                                self.relic_mgr.increment_counter()
 
                                 report_every = self.get_setting("DISCORD_REPORT_EVERY_N_RUNS", 10)
                                 if self.get_setting("DISCORD_REPORT_ENABLED", True) and (self.session_stats["successful_runs"] % report_every == 0):

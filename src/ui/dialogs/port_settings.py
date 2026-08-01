@@ -144,6 +144,37 @@ class PortSettingsDialog(tk.Toplevel):
             command=self._trigger_test_heart,
         ).pack(anchor=tk.W)
 
+        # --- แลกเปลี่ยน Relic อัตโนมัติประจำพอร์ต ---
+        relic_card = theme.GlassCard(content, accent="#C9A227", padding=14)
+        relic_card.pack(fill=tk.X, pady=5)
+        body_r = relic_card.body
+        ttk.Label(body_r, text="🏛️ แลกเปลี่ยน Relic อัตโนมัติประจำพอร์ต", font=theme.FONT_H3).pack(anchor=tk.W, pady=(0, 8))
+        self._build_toggle(body_r, "RELIC_EXCHANGE_ENABLED", "เปิดระบบแลก Relic", "ครบ N รอบจะเข้าไปเช็กและแลก Relic ให้อัตโนมัติ")
+
+        relic_interval_row = ttk.Frame(body_r, padding=(0, 7))
+        relic_interval_row.pack(fill=tk.X)
+        copy_r = ttk.Frame(relic_interval_row)
+        copy_r.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Label(copy_r, text="รอบการเช็ก Relic (รอบ)", font=theme.FONT_BODY_BOLD).pack(anchor=tk.W)
+        ttk.Label(copy_r, text="แลก Relic ทุกๆ N รอบที่เล่นผ่าน (เฉพาะพอร์ตนี้)", font=theme.FONT_SMALL, bootstyle="secondary").pack(anchor=tk.W, pady=(1, 0))
+        self.relic_interval_var = tk.IntVar(value=int(self.port_settings.get("RELIC_EXCHANGE_EVERY_N_RUNS", 10)))
+        relic_spin = ttk.Spinbox(
+            relic_interval_row,
+            from_=1, to=50, increment=1,
+            textvariable=self.relic_interval_var,
+            width=6,
+        )
+        relic_spin.pack(side=tk.RIGHT, padx=(8, 0))
+
+        relic_btn_row = ttk.Frame(body_r, padding=(0, 7))
+        relic_btn_row.pack(fill=tk.X)
+        ttk.Button(
+            relic_btn_row,
+            text="🧪 บังคับเช็ก Relic ในรอบถัดไปทันที",
+            bootstyle="warning-outline",
+            command=self._trigger_test_relic,
+        ).pack(anchor=tk.W)
+
 
     def _build_toggle(self, parent, attr, label, hint):
         row = ttk.Frame(parent, padding=(0, 7))
@@ -215,10 +246,20 @@ class PortSettingsDialog(tk.Toplevel):
         instance.log_info("🧪 [Test] ตั้งค่าบังคับส่งหัวใจเรียบร้อย! บอทจะเริ่มส่งหัวใจทันทีที่กลับมาหน้าหลัก (start_game)")
         messagebox.showinfo("ตั้งค่าสำเร็จ", "ตั้งค่าสำเร็จแล้ว! บอทพอร์ตนี้จะสลับไปส่งหัวใจทันทีเมื่อพบบอทอยู่หน้าหลัก")
 
+    def _trigger_test_relic(self):
+        instance = self.app.instances.get(self.device_id)
+        if not instance or not instance.running:
+            messagebox.showwarning("บอทไม่ได้เปิดรัน", "กรุณากดเปิดทำงานบอทของพอร์ตนี้ก่อนกดทดสอบ")
+            return
+        instance.relic_mgr._relic_counter = 999
+        instance.log_info("🧪 [Test] ตั้งค่าบังคับเช็ก Relic เรียบร้อย! บอทจะเช็กแลก Relic ทันทีที่กลับมาหน้าหลัก (start_game)")
+        messagebox.showinfo("ตั้งค่าสำเร็จ", "ตั้งค่าสำเร็จแล้ว! บอทพอร์ตนี้จะสลับไปเช็กแลก Relic ทันทีเมื่อพบบอทอยู่หน้าหลัก")
+
     def _save_settings(self):
         new_settings = {attr: var.get() for attr, var in self.vars.items()}
         new_settings["SELECTED_DISCORD_WEBHOOK"] = self.wh_var.get()
         new_settings["HEART_INTERVAL_MINUTES"] = self.heart_interval_var.get()
+        new_settings["RELIC_EXCHANGE_EVERY_N_RUNS"] = self.relic_interval_var.get()
         if self.key in self.app.saved_ports:
             self.app.saved_ports[self.key]["settings"] = new_settings
             config.save_saved_ports(self.app.saved_ports)

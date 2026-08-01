@@ -254,3 +254,56 @@ def read_game_score_with_gemini(screen):
 
         _safe_print(f"[Gemini OCR] อ่านข้อมูลไม่สำเร็จ ข้อความจาก Gemini: {res_text[:120]}")
         return None
+
+
+# Prompt สำหรับอ่านจำนวนหัวใจ (Hearts/Lives) จากหน้าจอหลัก
+GEMINI_HEART_COUNT_PROMPT = (
+    "นี่คือภาพหน้าจอหลักของเกม Cookie Run จะมีตัวเลขแสดงจำนวนหัวใจ (Hearts/Lives) "
+    "อยู่บนหน้าจอ มักอยู่ตอนบนหรือมุมบน มักมีไอคอนหัวใจ ❤️ อยู่ใกล้ๆ\n"
+    "ช่วยหาและอ่านตัวเลขจำนวนหัวใจที่เหลืออยู่\n"
+    "ตอบเป็น JSON สั้นๆ เท่านั้น เช่น: {\"hearts\": 3}\n"
+    "ถ้าไม่เห็นตัวเลขหัวใจหรือหัวใจเหลือ 0 ก็ตอบ: {\"hearts\": 0}\n"
+    "ห้ามมีข้อความอื่นใด นอกเหนือจาก JSON นี้เด็ดขาด"
+)
+
+
+def read_heart_count_with_gemini(screen):
+    """
+    อ่านจำนวนหัวใจที่เหลืออยู่จากภาพหน้าจอหลักด้วย Gemini Vision OCR
+    คืนค่าเป็น int (จำนวนหัวใจ 0-N) หรือ None ถ้าอ่านไม่สำเร็จ
+    """
+    import json
+    import re
+
+    success, buffer = cv2.imencode(".png", screen)
+    if not success:
+        _safe_print("[Gemini Heart OCR] เข้ารหัสภาพไม่สำเร็จ")
+        return None
+
+    res_text = _describe_image_bytes_with_gemini(buffer.tobytes(), prompt=GEMINI_HEART_COUNT_PROMPT)
+    if not res_text:
+        return None
+
+    try:
+        clean_json = re.sub(r"```(?:json)?", "", res_text).strip("` \n\r")
+        json_match = re.search(r"\{.*\}", clean_json, re.DOTALL)
+        if json_match:
+            clean_json = json_match.group(0)
+
+        data = json.loads(clean_json)
+        hearts = _parse_int_safe(data.get("hearts"))
+        _safe_print(f"[Gemini Heart OCR] อ่านจำนวนหัวใจสำเร็จ! ❤️ หัวใจเหลือ: {hearts}")
+        return hearts
+    except Exception as e:
+        _safe_print(f"[Gemini Heart OCR] แปลง JSON ไม่สำเร็จ ({e}) -> ลอง Regex สำรอง...")
+        try:
+            hearts_match = re.search(r'(?:"hearts"|หัวใจ|hearts?)\s*[:=]\s*"?(\d+)"?', res_text, re.IGNORECASE)
+            if hearts_match:
+                hearts = _parse_int_safe(hearts_match.group(1))
+                _safe_print(f"[Gemini Heart OCR Fallback] ❤️ หัวใจเหลือ: {hearts}")
+                return hearts
+        except Exception:
+            pass
+
+        _safe_print(f"[Gemini Heart OCR] อ่านจำนวนหัวใจไม่สำเร็จ ข้อความจาก Gemini: {res_text[:120]}")
+        return None
